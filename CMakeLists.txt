@@ -8,7 +8,6 @@
 cmake_minimum_required(VERSION 3.14.0 FATAL_ERROR)
 project(EzyCad)
 
-
 # CMP0167: Use legacy FindBoost module (avoids "FindBoost module is removed" warning in CMake 3.30+)
 if(POLICY CMP0167)
   cmake_policy(SET CMP0167 OLD)
@@ -203,6 +202,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Emscripten")
             --preload-file ${CMAKE_SOURCE_DIR}/third_party/imgui/fonts/DroidSans.ttf@/DroidSans.ttf \
             --preload-file ${CMAKE_SOURCE_DIR}/imgui.ini@/imgui.ini \
             --preload-file ${CMAKE_SOURCE_DIR}/res/ezycad_settings.json@/res/ezycad_settings.json \
+            --preload-file ${CMAKE_SOURCE_DIR}/res/default.ezy@/res/default.ezy \
             --preload-file ${CMAKE_SOURCE_DIR}/res/examples@/res/examples \
             --preload-file ${CMAKE_SOURCE_DIR}/res/scripts/lua@/res/scripts/lua \
             --shell-file ${CMAKE_SOURCE_DIR}/web/EzyCad.html"
@@ -234,6 +234,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Emscripten")
             --preload-file ${CMAKE_SOURCE_DIR}/third_party/imgui/fonts/DroidSans.ttf@/DroidSans.ttf \
             --preload-file ${CMAKE_SOURCE_DIR}/imgui.ini@/imgui.ini \
             --preload-file ${CMAKE_SOURCE_DIR}/res/ezycad_settings.json@/res/ezycad_settings.json \
+            --preload-file ${CMAKE_SOURCE_DIR}/res/default.ezy@/res/default.ezy \
             --preload-file ${CMAKE_SOURCE_DIR}/res/examples@/res/examples \
             --preload-file ${CMAKE_SOURCE_DIR}/res/scripts/lua@/res/scripts/lua \
             --shell-file ${CMAKE_SOURCE_DIR}/web/EzyCad.html"
@@ -269,7 +270,10 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Emscripten")
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${CMAKE_SOURCE_DIR}/res/ezycad_settings.json
             $<TARGET_FILE_DIR:${PROJECT_NAME}>/res/ezycad_settings.json
-        COMMENT "Copying res/ezycad_settings.json for Emscripten"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_SOURCE_DIR}/res/default.ezy
+            $<TARGET_FILE_DIR:${PROJECT_NAME}>/res/default.ezy
+        COMMENT "Copying res/ezycad_settings.json and res/default.ezy for Emscripten"
     )
     file(GLOB RES_EXAMPLE_FILES_EM "${CMAKE_SOURCE_DIR}/res/examples/*.ezy")
     if(RES_EXAMPLE_FILES_EM)
@@ -330,7 +334,10 @@ else()
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${CMAKE_SOURCE_DIR}/res/ezycad_settings.json
             $<TARGET_FILE_DIR:${PROJECT_NAME}>/res/ezycad_settings.json
-        COMMENT "Copying res/ezycad_settings.json for native"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_SOURCE_DIR}/res/default.ezy
+            $<TARGET_FILE_DIR:${PROJECT_NAME}>/res/default.ezy
+        COMMENT "Copying res/ezycad_settings.json and res/default.ezy for native"
     )
     file(GLOB RES_EXAMPLE_FILES "${CMAKE_SOURCE_DIR}/res/examples/*.ezy")
     if(RES_EXAMPLE_FILES)

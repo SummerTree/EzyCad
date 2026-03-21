@@ -80,7 +80,7 @@ class GUI
   void save_file_dialog_async(const char* title, const std::string& default_file, const std::string& json_str);
 #endif
 
-  void on_file(const std::string& file_path, const std::string& json_str);
+  void on_file(const std::string& file_path, const std::string& json_str, bool announce_load = true);
   void on_import_file(const std::string& file_path, const std::string& file_data);
 
   void save_occt_view_settings();
@@ -121,6 +121,7 @@ class GUI
   void dbg_();
   void initialize_toolbar_();
   void load_examples_list_();
+  void load_default_project_();
   void menu_bar_();
   void toolbar_();
   void message_status_window_();
@@ -139,6 +140,9 @@ class GUI
   void import_file_dialog_();
   void open_file_dialog_();
   void save_file_dialog_();
+  void save_startup_project_();
+  void clear_saved_startup_project_();
+  std::string serialized_project_json_() const;
   void open_url_(const char* url);
 
   // Settings related
@@ -170,9 +174,9 @@ class GUI
   bool                                  m_message_visible = false;
   std::chrono::steady_clock::time_point m_message_start_time;
 
-  // Log window
-  std::vector<std::string> m_log_messages;                  // Store log messages
-  bool                     m_log_scroll_to_bottom = false;  // Flag to auto-scroll to latest message
+  // Log window (single buffer for ImGui read-only multiline = selectable / copyable text)
+  std::vector<char> m_log_buffer {'\0'};
+  bool              m_log_scroll_to_bottom = false;  // Auto-scroll / cursor to end on new lines
   bool                     m_log_window_visible   = true;   // Control log window visibility
 
   // Stream redirection
