@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "occt_glfw_win.h"
+#include "types.h"
 #include "shp_chamfer.h"
 #include "shp_common.h"
 #include "shp_cut.h"
@@ -28,6 +29,7 @@ class GUI;
 class TopoDS_Face;
 class TopoDS_Wire;
 class TopoDS_Edge;
+class TopoDS_Shape;
 enum class Mode;
 enum class Command;
 
@@ -63,6 +65,9 @@ class Occt_view : protected AIS_ViewController
   std::string to_json() const;
   void        load(const std::string& json_str, bool restore_view = true);
   bool        import_step(const std::string& file_path);
+
+  /// Writes STEP, IGES, or binary STL to \a file_path. Uses selected shapes if any, else all shapes.
+  [[nodiscard]] Status export_document(Export_format fmt, const std::string& file_path);
 
   // Undo / redo (document snapshot stack).
   /// Saves current document (full JSON) and mode. A future delta-based approach would save memory
@@ -203,6 +208,9 @@ class Occt_view : protected AIS_ViewController
   // TODO group in .cpp file
   void        add_shp_(Shp_ptr& shp);
   std::string unique_shape_name_(const char* base_name) const;
+
+  TopoDS_Shape shape_with_local_transform_(const AIS_Shape_ptr& ais) const;
+  [[nodiscard]] Status build_export_shape_(TopoDS_Shape& out_shape) const;
 
   void update_view_background_();
 
