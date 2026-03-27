@@ -1,24 +1,32 @@
+// Dear ImGui + EzyCad GUI + OCCT 3D view + chained GLFW input.
+// On wasm, sizing is handled by imgui_impl_glfw (OnCanvasSizeChange: CSS * DPR + canvas); do not
+// second-guess with extra glfwSetWindowSize/io overrides here — they fight that path and break input.
+
 #define WIN32_LEAN_AND_MEAN
+#include <stdio.h>
+#include <functional>
+
 #include "gui.h"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
-#include "occt_view.h"
 #define GL_SILENCE_DEPRECATION
 #if defined(IMGUI_IMPL_OPENGL_ES2)
 #include <GLES2/gl2.h>
 #endif
 #include <GLFW/glfw3.h>  // Will drag system OpenGL headers
 
-#if defined(_MSC_VER) && (_MSC_VER >= 1900) && \
-    !defined(IMGUI_DISABLE_WIN32_FUNCTIONS)
+// [Win32] Our example includes a copy of glfw3.lib pre-compiled with VS2010 to maximize ease of testing and compatibility with old VS compilers.
+// To link with VS2010-era libraries, VS2015+ requires linking with legacy_stdio_definitions.lib, which we do using this pragma.
+// Your own project should not be affected, as you are likely to link with a newer binary of GLFW that is adequate for your version of Visual Studio.
+#if defined(_MSC_VER) && (_MSC_VER >= 1900) && !defined(IMGUI_DISABLE_WIN32_FUNCTIONS)
 #pragma comment(lib, "legacy_stdio_definitions")
 #endif
 
+// This example can also compile and run with Emscripten! See 'Makefile.emscripten' for details.
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
-
-#include "third_party/imgui/emscripten/emscripten_mainloop_stub.h"
+#include "emscripten/emscripten_mainloop_stub.h"
 
 static GUI* s_gui_for_unload = nullptr;
 
@@ -34,7 +42,6 @@ static void glfw_error_callback(int error, const char* description)
   fprintf(stderr, "GLFW Error %d: %s\n", error, description);
 }
 
-// Global lambda storage
 static std::function<void(GLFWwindow* window, int key, int scancode, int action, int mods)> keyCallback;
 static std::function<void(GLFWwindow* window, double xpos, double ypos)>                    cursorPosCallback;
 static std::function<void(GLFWwindow* window, int button, int action, int mods)>            mouseButtonCallback;
@@ -110,26 +117,33 @@ int main(int, char**)
   const char* glsl_version = "#version 130";
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
-  // glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);  // 3.2+
-  // only glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // 3.0+ only
+  // glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);  // 3.2+ only
+  // glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);            // 3.0+ only
 #endif
 
   // Create window with graphics context
-  GLFWwindow* window = glfwCreateWindow(1,
-                                        1,
-                                        "EzyCad",
-                                        nullptr,
-                                        nullptr);
+  float       main_scale = ImGui_ImplGlfw_GetContentScaleForMonitor(glfwGetPrimaryMonitor());  // Valid on GLFW 3.3+ only
+  GLFWwindow* window     = glfwCreateWindow((int) (1280 * main_scale), (int) (800 * main_scale), "EzyCad", nullptr, nullptr);
   if (window == nullptr)
     return 1;
-
-  // Add this line to maximize the window
-  glfwMaximizeWindow(window);
-
   glfwMakeContextCurrent(window);
   glfwSwapInterval(1);  // Enable vsync
 
-  // glfwSetWindowIcon()
+#ifdef __EMSCRIPTEN__
+  // GLFW often reports content scale 1.0 on wasm while the browser uses devicePixelRatio > 1.
+  // Windows native uses monitor content scale for main_scale — align wasm so font/style size matches.
+  {
+    int ww = 0, wh = 0, fbw = 0, fbh = 0;
+    glfwGetWindowSize(window, &ww, &wh);
+    glfwGetFramebufferSize(window, &fbw, &fbh);
+    float fb_scale = 1.0f;
+    if (ww > 0 && wh > 0)
+      fb_scale = ((float)fbw / (float)ww + (float)fbh / (float)wh) * 0.5f;
+    const float dpr = emscripten_get_device_pixel_ratio();
+    if (main_scale <= 1.0f)
+      main_scale = (fb_scale > 1.01f) ? fb_scale : dpr;
+  }
+#endif
 
   // Setup Dear ImGui context
   IMGUI_CHECKVERSION();
@@ -139,19 +153,47 @@ int main(int, char**)
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;   // Enable Gamepad Controls
 
-  // Setup Dear ImGui style (initial; GUI applies light/dark from option each frame)
-  ImGui::StyleColorsLight();
+  // Setup Dear ImGui style
+  ImGui::StyleColorsDark();
+  // ImGui::StyleColorsLight();
+
+  // Setup scaling
+  ImGuiStyle& style = ImGui::GetStyle();
+  style.ScaleAllSizes(main_scale);  // Bake a fixed style scale. (until we have a solution for dynamic style scaling, changing this requires resetting Style + calling this again)
+  style.FontScaleDpi = main_scale;  // Set initial font scale. (in docking branch: using io.ConfigDpiScaleFonts=true automatically overrides this for every window depending on the current monitor)
 
   // Setup Platform/Renderer backends
   ImGui_ImplGlfw_InitForOpenGL(window, true);
-  io.IniFilename = nullptr;  // Layout persisted in ezycad_settings.json
 #ifdef __EMSCRIPTEN__
   ImGui_ImplGlfw_InstallEmscriptenCallbacks(window, "#canvas");
 #endif
   ImGui_ImplOpenGL3_Init(glsl_version);
-  io.Fonts->AddFontFromFileTTF("DroidSans.ttf", 18.0f);
+
+  // DroidSans at logical px; do not multiply by main_scale — FontScaleDpi applies HiDPI.
+  {
+#ifdef __EMSCRIPTEN__
+    ImFont* font = io.Fonts->AddFontFromFileTTF("/DroidSans.ttf", 13.0f);
+#else
+    ImFont* font = io.Fonts->AddFontFromFileTTF("DroidSans.ttf", 13.0f);
+#endif
+    IM_ASSERT(font != nullptr);
+  }
+
+  // Monospace for script console (bundled ImGui font: Cousine).
+  ImFont* console_font = nullptr;
+#ifdef __EMSCRIPTEN__
+  console_font = io.Fonts->AddFontFromFileTTF("/Cousine-Regular.ttf", 13.0f);
+#else
+  console_font = io.Fonts->AddFontFromFileTTF("Cousine-Regular.ttf", 13.0f);
+  if (!console_font)
+    console_font = io.Fonts->AddFontFromFileTTF("third_party/imgui/fonts/Cousine-Regular.ttf", 13.0f);
+#endif
+  IM_ASSERT(console_font != nullptr);
+
+  io.IniFilename = nullptr;  // Layout persisted via ezycad_settings.json (see GUI)
 
   GUI gui;
+  gui.set_console_font(console_font);
   gui.init(window);
 
 #ifdef __EMSCRIPTEN__
@@ -164,8 +206,6 @@ int main(int, char**)
 
   keyCallback = [&](GLFWwindow* window, int key, int scancode, int action, int mods)
   {
-    // Tab is an app hotkey (dimension/angle cycling): handle only on key-down and
-    // don't forward Tab press/release to ImGui focus navigation.
     if (key == GLFW_KEY_TAB)
     {
       if (action == GLFW_PRESS)
@@ -173,7 +213,21 @@ int main(int, char**)
       return;
     }
 
-    // Undo/redo: handle regardless of focus so they work from any pane.
+    // Script console toggle: always reach GUI (ImGui text fields would otherwise capture F12 / Ctrl+Shift+L).
+#ifndef __EMSCRIPTEN__
+    if (action == GLFW_PRESS && key == GLFW_KEY_F12)
+    {
+      gui.on_key(key, scancode, action, mods);
+      return;
+    }
+#else
+    if (action == GLFW_PRESS && (mods & GLFW_MOD_CONTROL) && (mods & GLFW_MOD_SHIFT) != 0 && key == GLFW_KEY_L)
+    {
+      gui.on_key(key, scancode, action, mods);
+      return;
+    }
+#endif
+
     if (action == GLFW_PRESS && (mods & GLFW_MOD_CONTROL) &&
         (key == GLFW_KEY_Z || key == GLFW_KEY_Y))
     {
@@ -188,32 +242,28 @@ int main(int, char**)
 
   cursorPosCallback = [&](GLFWwindow* window, double xpos, double ypos)
   {
+    ImGui_ImplGlfw_CursorPosCallback(window, xpos, ypos);
     if (!io.WantCaptureMouse)
       gui.on_mouse_pos(ScreenCoords(glm::dvec2(xpos, ypos)));
-
-    ImGui_ImplGlfw_CursorPosCallback(window, xpos, ypos);
   };
 
   mouseButtonCallback = [&](GLFWwindow* window, int button, int action, int mods)
   {
+    ImGui_ImplGlfw_MouseButtonCallback(window, button, action, mods);
     if (!io.WantCaptureMouse)
       gui.on_mouse_button(button, action, mods);
-
-    ImGui_ImplGlfw_MouseButtonCallback(window, button, action, mods);
   };
 
   windowSizeCallback = [&](GLFWwindow* window, int width, int height)
   {
-    // Update the view size
     gui.on_resize(width, height);
   };
 
   scroll_callback = [&](GLFWwindow* window, double xoffset, double yoffset)
   {
+    ImGui_ImplGlfw_ScrollCallback(window, xoffset, yoffset);
     if (!io.WantCaptureMouse)
       gui.on_mouse_scroll(xoffset, yoffset);
-
-    ImGui_ImplGlfw_ScrollCallback(window, xoffset, yoffset);
   };
 
   glfwSetKeyCallback(window, key_callback_wrapper);
@@ -230,14 +280,10 @@ int main(int, char**)
 #endif
   {
     // Poll and handle events (inputs, window resize, etc.)
-    // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to
-    // tell if dear imgui wants to use your inputs.
-    // - When io.WantCaptureMouse is true, do not dispatch mouse input data to
-    // your main application, or clear/overwrite your copy of the mouse data.
-    // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input
-    // data to your main application, or clear/overwrite your copy of the
-    // keyboard data. Generally you may always pass all inputs to dear imgui,
-    // and hide them from your application based on those two flags.
+    // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
+    // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
+    // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or clear/overwrite your copy of the keyboard data.
+    // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
     glfwPollEvents();
     if (glfwGetWindowAttrib(window, GLFW_ICONIFIED) != 0)
     {
@@ -245,34 +291,20 @@ int main(int, char**)
       continue;
     }
 
-    // Start the Dear ImGui frame
-    ImGui_ImplOpenGL3_NewFrame();
+    // Start the Dear ImGui frame (platform must set DisplaySize before renderer NewFrame)
     ImGui_ImplGlfw_NewFrame();
+    ImGui_ImplOpenGL3_NewFrame();
     ImGui::NewFrame();
 
     gui.render_gui();
 
     // Rendering
-
     ImGui::Render();
     int display_w, display_h;
     glfwGetFramebufferSize(window, &display_w, &display_h);
-    static int last_display_w = 0;
-    static int last_display_h = 0;
-    if (last_display_w != display_w || last_display_h != display_h)
-    {
-      // TODO use glfw callback;
-      last_display_w = display_w;
-      last_display_h = display_h;
-      // view.onResize(display_w, display_h);
-    }
-
     glViewport(0, 0, display_w, display_h);
     ImVec4 clear_color = gui.get_clear_color();
-    glClearColor(clear_color.x * clear_color.w,
-                 clear_color.y * clear_color.w,
-                 clear_color.z * clear_color.w,
-                 clear_color.w);
+    glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
     glClear(GL_COLOR_BUFFER_BIT);
 
     gui.render_occt();

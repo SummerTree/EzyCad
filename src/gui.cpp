@@ -21,6 +21,7 @@
 #include "imgui.h"
 #include "log.h"
 #include "lua_console.h"
+#include "python_console.h"
 #include "occt_view.h"
 #include "sketch.h"
 
@@ -99,6 +100,7 @@ void GUI::render_gui()
   add_torus_dialog_();
   log_window_();
   lua_console_();
+  python_console_();
   settings_();
   dbg_();
 }
@@ -166,6 +168,23 @@ void GUI::on_key(int key, int scancode, int action, int mods)
 
     // Check for Ctrl modifier
     bool ctrl_pressed = (mods & GLFW_MOD_CONTROL) != 0;
+
+    // Toggle script console (Lua): F12 on native; wasm uses Ctrl+Shift+L (see main.cpp) so F12 is not stolen by the browser.
+#ifndef __EMSCRIPTEN__
+    if (key == GLFW_KEY_F12)
+    {
+      m_show_lua_console = !m_show_lua_console;
+      save_occt_view_settings();
+      return;
+    }
+#else
+    if (ctrl_pressed && (mods & GLFW_MOD_SHIFT) != 0 && key == GLFW_KEY_L)
+    {
+      m_show_lua_console = !m_show_lua_console;
+      save_occt_view_settings();
+      return;
+    }
+#endif
 
     // Handle file menu hotkeys and undo/redo
     if (ctrl_pressed)
@@ -512,10 +531,21 @@ void GUI::menu_bar_()
       m_log_window_visible = !m_log_window_visible;
       save_panes           = true;
     }
-    if (ImGui::MenuItem("Lua Console", nullptr, m_show_lua_console))
+#ifdef __EMSCRIPTEN__
+    if (ImGui::MenuItem("Script console (Lua)", "Ctrl+Shift+L", m_show_lua_console))
+#else
+    if (ImGui::MenuItem("Script console (Lua)", "F12", m_show_lua_console))
+#endif
     {
       m_show_lua_console = !m_show_lua_console;
       save_panes         = true;
+    }
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Lua scripting. Toggle with keyboard or here.");
+    if (ImGui::MenuItem("Python Console", nullptr, m_show_python_console))
+    {
+      m_show_python_console = !m_show_python_console;
+      save_panes            = true;
     }
 #ifndef NDEBUG
     if (ImGui::MenuItem("Debug", nullptr, m_show_dbg))
@@ -707,7 +737,8 @@ void GUI::parse_gui_panes_settings_(const std::string& content)
     set_show_shape_list(b("show_shape_list", true));
     set_log_window_visible(b("log_window_visible", true));
     set_show_settings_dialog(b("show_settings_dialog", false));
-    m_show_lua_console = b("show_lua_console", false);
+    m_show_lua_console = b("show_lua_console", true);
+    m_show_python_console = b("show_python_console", false);
 #ifndef NDEBUG
     set_show_dbg(b("show_dbg", false));
 #endif
@@ -755,13 +786,6 @@ void GUI::load_occt_view_settings_()
       settings::save(content);
   }
 
-#if 0  // Set to 0 to disable logging loaded settings to the log window
-  if (!content.empty())
-    log_message("Settings loaded:\n" + content);
-  else
-    log_message("Settings loaded: (none)");
-#endif
-
   EZY_ASSERT_MSG(!content.empty(), "Settings content empty!");
 
   parse_occt_view_settings_(content);
@@ -782,6 +806,8 @@ void GUI::load_occt_view_settings_()
   {
     // EZY_ASSERT_MSG(false, "Settings invalid!");
   }
+
+  log_message("Settings: loaded.");
 }
 
 void GUI::save_occt_view_settings()
@@ -818,6 +844,7 @@ void GUI::save_occt_view_settings()
       {  "log_window_visible",   m_log_window_visible},
       {"show_settings_dialog", m_show_settings_dialog},
       {    "show_lua_console",     m_show_lua_console},
+      { "show_python_console",  m_show_python_console},
 #ifndef NDEBUG
       {            "show_dbg",             m_show_dbg},
 #endif
@@ -828,6 +855,7 @@ void GUI::save_occt_view_settings()
     j["imgui_ini"] = std::string(imgui_ini);
 
   settings::save(j.dump(2));
+  log_message("Settings: saved.");
 }
 
 // Render toolbar with ImGui
@@ -1278,7 +1306,7 @@ void GUI::settings_()
   if (!ImGui::Begin("Settings", &m_show_settings_dialog, ImGuiWindowFlags_None))
   {
     ImGui::End();
-    save_occt_view_settings();  // Persist that dialog was closed (e.g. via X)
+    //save_occt_view_settings();  // Persist that dialog was closed (e.g. via X)
     return;
   }
 
@@ -1728,6 +1756,15 @@ void GUI::lua_console_()
   m_lua_console->render(&m_show_lua_console);
 }
 
+void GUI::python_console_()
+{
+  if (!m_show_python_console)
+    return;
+  if (!m_python_console)
+    m_python_console = std::make_unique<Python_console>(this);
+  m_python_console->render(&m_show_python_console);
+}
+
 void GUI::init(GLFWwindow* window)
 {
   initialize_toolbar_();
@@ -1741,7 +1778,6 @@ void GUI::init(GLFWwindow* window)
   log_message("EzyCad: 3D view ready (initial empty document).");
 
   load_occt_view_settings_();
-  log_message("EzyCad: application settings loaded.");
 
   load_examples_list_();
   if (m_example_files.empty())
