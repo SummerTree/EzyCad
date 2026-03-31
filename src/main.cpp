@@ -8,6 +8,7 @@
 
 #include "gui.h"
 #include "imgui.h"
+#include "ui_font.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 #define GL_SILENCE_DEPRECATION
@@ -128,6 +129,9 @@ int main(int, char**)
     return 1;
   glfwMakeContextCurrent(window);
   glfwSwapInterval(1);  // Enable vsync
+#ifndef __EMSCRIPTEN__
+  glfwMaximizeWindow(window);
+#endif
 
 #ifdef __EMSCRIPTEN__
   // GLFW often reports content scale 1.0 on wasm while the browser uses devicePixelRatio > 1.
@@ -172,9 +176,9 @@ int main(int, char**)
   // DroidSans at logical px; do not multiply by main_scale — FontScaleDpi applies HiDPI.
   {
 #ifdef __EMSCRIPTEN__
-    ImFont* font = io.Fonts->AddFontFromFileTTF("/DroidSans.ttf", 13.0f);
+    ImFont* font = io.Fonts->AddFontFromFileTTF("/DroidSans.ttf", k_imgui_base_font_size_px);
 #else
-    ImFont* font = io.Fonts->AddFontFromFileTTF("DroidSans.ttf", 13.0f);
+    ImFont* font = io.Fonts->AddFontFromFileTTF("DroidSans.ttf", k_imgui_base_font_size_px);
 #endif
     IM_ASSERT(font != nullptr);
   }
@@ -182,11 +186,11 @@ int main(int, char**)
   // Monospace for script console (bundled ImGui font: Cousine).
   ImFont* console_font = nullptr;
 #ifdef __EMSCRIPTEN__
-  console_font = io.Fonts->AddFontFromFileTTF("/Cousine-Regular.ttf", 13.0f);
+  console_font = io.Fonts->AddFontFromFileTTF("/Cousine-Regular.ttf", k_imgui_base_font_size_px);
 #else
-  console_font = io.Fonts->AddFontFromFileTTF("Cousine-Regular.ttf", 13.0f);
+  console_font = io.Fonts->AddFontFromFileTTF("Cousine-Regular.ttf", k_imgui_base_font_size_px);
   if (!console_font)
-    console_font = io.Fonts->AddFontFromFileTTF("third_party/imgui/fonts/Cousine-Regular.ttf", 13.0f);
+    console_font = io.Fonts->AddFontFromFileTTF("third_party/imgui/fonts/Cousine-Regular.ttf", k_imgui_base_font_size_px);
 #endif
   IM_ASSERT(console_font != nullptr);
 

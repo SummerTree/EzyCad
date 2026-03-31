@@ -2,11 +2,10 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
-#include <map>
 #include <nlohmann/json.hpp>
-#include <sstream>
 
 #include "settings.h"
 
@@ -24,9 +23,6 @@
 #include "python_console.h"
 #include "occt_view.h"
 #include "sketch.h"
-
-// Bump when settings schema or semantics change; mismatch causes defaults to be loaded.
-static const char* const k_settings_version = "1";
 
 // Must be here to prevent compiler warning
 #include <GLFW/glfw3.h>
@@ -110,182 +106,6 @@ void GUI::render_occt()
   m_view->do_frame();
 }
 
-void GUI::set_mode(Mode mode)
-{
-  m_mode = mode;
-  m_view->on_mode();
-  for (Toolbar_button& b : m_toolbar_buttons)
-    if (b.data.index() == 0)
-      b.is_active = std::get<Mode>(b.data) == mode;
-}
-
-void GUI::set_parent_mode()
-{
-  static std::map<Mode, Mode> parent_modes = {
-      {                        Mode::Normal,                 Mode::Normal},
-      {                          Mode::Move,                 Mode::Normal},
-      {                         Mode::Scale,                 Mode::Normal},
-      {                        Mode::Rotate,                 Mode::Normal},
-      {        Mode::Sketch_inspection_mode,                 Mode::Normal},
-      {       Mode::Sketch_from_planar_face,                 Mode::Normal},
-      {           Mode::Sketch_face_extrude,                 Mode::Normal},
-      {                 Mode::Shape_chamfer,                 Mode::Normal},
-      {                  Mode::Shape_fillet,                 Mode::Normal},
-      {         Mode::Shape_polar_duplicate,                 Mode::Normal},
-      {               Mode::Sketch_add_node, Mode::Sketch_inspection_mode},
-      {               Mode::Sketch_add_edge, Mode::Sketch_inspection_mode},
-      {        Mode::Sketch_add_multi_edges, Mode::Sketch_inspection_mode},
-      {     Mode::Sketch_add_seg_circle_arc, Mode::Sketch_inspection_mode},
-      {         Mode::Sketch_operation_axis, Mode::Sketch_inspection_mode},
-      {             Mode::Sketch_add_square, Mode::Sketch_inspection_mode},
-      {          Mode::Sketch_add_rectangle, Mode::Sketch_inspection_mode},
-      {Mode::Sketch_add_rectangle_center_pt, Mode::Sketch_inspection_mode},
-      {             Mode::Sketch_add_circle, Mode::Sketch_inspection_mode},
-      {       Mode::Sketch_add_circle_3_pts, Mode::Sketch_inspection_mode},
-      {               Mode::Sketch_add_slot, Mode::Sketch_inspection_mode},
-      {        Mode::Sketch_toggle_edge_dim, Mode::Sketch_inspection_mode},
-  };
-
-  static bool check = [&]()
-  {
-    // Called only once.
-    for (size_t idx = 0; idx < size_t(Mode::_count); ++idx)
-      EZY_ASSERT(parent_modes.find(Mode(idx)) != parent_modes.end());
-
-    return true;
-  }();
-
-  const auto itr = parent_modes.find(get_mode());
-  EZY_ASSERT(itr != parent_modes.end());
-  set_mode(itr->second);
-}
-
-void GUI::on_key(int key, int scancode, int action, int mods)
-{
-  if (action == GLFW_PRESS)
-  {
-    const ScreenCoords screen_coords(glm::dvec2(ImGui::GetIO().MousePos.x, ImGui::GetIO().MousePos.y));
-
-    // Check for Ctrl modifier
-    bool ctrl_pressed = (mods & GLFW_MOD_CONTROL) != 0;
-
-    // Toggle script console (Lua): F12 on native; wasm uses Ctrl+Shift+L (see main.cpp) so F12 is not stolen by the browser.
-#ifndef __EMSCRIPTEN__
-    if (key == GLFW_KEY_F12)
-    {
-      m_show_lua_console = !m_show_lua_console;
-      save_occt_view_settings();
-      return;
-    }
-#else
-    if (ctrl_pressed && (mods & GLFW_MOD_SHIFT) != 0 && key == GLFW_KEY_L)
-    {
-      m_show_lua_console = !m_show_lua_console;
-      save_occt_view_settings();
-      return;
-    }
-#endif
-
-    // Handle file menu hotkeys and undo/redo
-    if (ctrl_pressed)
-    {
-      switch (key)
-      {
-        case GLFW_KEY_N:  // Ctrl+N for New
-          m_view->new_file();
-          break;
-
-        case GLFW_KEY_O:  // Ctrl+O for Open
-          open_file_dialog_();
-          break;
-
-        case GLFW_KEY_S:  // Ctrl+S for Save
-          save_file_dialog_();
-          break;
-
-        case GLFW_KEY_Z:  // Ctrl+Z Undo, Ctrl+Shift+Z Redo
-          if ((mods & GLFW_MOD_SHIFT) != 0)
-            m_view->redo();
-          else
-            m_view->undo();
-          break;
-
-        case GLFW_KEY_Y:  // Ctrl+Y Redo
-          m_view->redo();
-          break;
-
-        default:
-          break;
-      }
-    }
-    else
-    {
-      // Handle other keys
-      switch (key)
-      {
-        case GLFW_KEY_ESCAPE:
-          m_view->cancel(Set_parent_mode::Yes);
-          hide_dist_edit();
-          hide_angle_edit();
-          break;
-
-        case GLFW_KEY_TAB:
-        {
-          bool shift_pressed = (mods & GLFW_MOD_SHIFT) != 0;
-          if (shift_pressed)
-            m_view->angle_input(screen_coords);
-          else
-            m_view->dimension_input(screen_coords);
-          break;
-        }
-
-        case GLFW_KEY_ENTER:
-          hide_dist_edit();
-          hide_angle_edit();
-          m_view->on_enter(screen_coords);
-          break;
-
-        case GLFW_KEY_D:
-          m_view->delete_selected();
-          break;
-
-        case GLFW_KEY_G:
-          set_mode(Mode::Move);
-          break;
-
-        case GLFW_KEY_R:
-          set_mode(Mode::Rotate);
-          break;
-
-        case GLFW_KEY_E:
-          set_mode(Mode::Sketch_face_extrude);
-          break;
-
-        case GLFW_KEY_S:
-          set_mode(Mode::Scale);
-          break;
-
-        default:
-          break;
-      }
-
-      switch (get_mode())
-      {
-        case Mode::Move:
-          on_key_move_mode_(key);
-          break;
-
-        case Mode::Rotate:
-          on_key_rotate_mode_(key);
-          break;
-
-        default:
-          break;
-      }
-    }
-  }
-}
-
 // Initialize toolbar buttons
 void GUI::initialize_toolbar_()
 {
@@ -307,7 +127,8 @@ void GUI::initialize_toolbar_()
       {          load_texture("Sketcher_CreateCircle.png"), false,                       "Add circle",              Mode::Sketch_add_circle},
       {    load_texture("Sketcher_Create3PointCircle.png"), false,     "Add circle from three points",        Mode::Sketch_add_circle_3_pts},
       {            load_texture("Sketcher_CreateSlot.png"), false,                         "Add slot",                Mode::Sketch_add_slot},
-      {       load_texture("TechDraw_LengthDimension.png"), false, "Toggle edge dimension annotation",         Mode::Sketch_toggle_edge_dim},
+      {       load_texture("TechDraw_LengthDimension.png"), false,
+       "Toggle edge dimension annotation (Options: length value placement)",         Mode::Sketch_toggle_edge_dim},
       {              load_texture("Design456_Extrude.png"), false,          "Extrude sketch face (e)",            Mode::Sketch_face_extrude},
       {             load_texture("PartDesign_Chamfer.png"), false,                          "Chamfer",                  Mode::Shape_chamfer},
       {              load_texture("PartDesign_Fillet.png"), false,                           "Fillet",                   Mode::Shape_fillet},
@@ -384,6 +205,9 @@ void GUI::menu_bar_()
 
       if (ImGui::MenuItem("STL (binary)..."))
         export_file_dialog_(Export_format::Stl);
+
+      if (ImGui::MenuItem("PLY (binary)..."))
+        export_file_dialog_(Export_format::Ply);
 
       ImGui::EndMenu();
     }
@@ -603,259 +427,6 @@ void GUI::open_url_(const char* url)
 #endif
   system(cmd.c_str());
 #endif
-}
-
-// Settings related
-void GUI::parse_occt_view_settings_(const std::string& content)
-{
-  try
-  {
-    using namespace nlohmann;
-    const json j = json::parse(content);
-    if (!j.contains("occt_view") || !j["occt_view"].is_object())
-      return;
-    const json& ov     = j["occt_view"];
-    float       bg1[3] = {0.85f, 0.88f, 0.90f};
-    float       bg2[3] = {0.45f, 0.55f, 0.60f};
-    int         method = 1;
-    float       g1[3]  = {0.1f, 0.1f, 0.1f};
-    float       g2[3]  = {0.1f, 0.1f, 0.3f};
-    auto        arr3   = [](const json& a, float* out)
-    {
-      if (a.is_array() && a.size() >= 3)
-        for (size_t i = 0; i < 3; ++i)
-          if (a[i].is_number())
-            out[i] = a[i].get<float>();
-    };
-    if (ov.contains("bg_color1"))
-      arr3(ov["bg_color1"], bg1);
-    if (ov.contains("bg_color2"))
-      arr3(ov["bg_color2"], bg2);
-    if (ov.contains("bg_gradient_method") && ov["bg_gradient_method"].is_number_integer())
-      method = ov["bg_gradient_method"].get<int>();
-    if (ov.contains("grid_color1"))
-      arr3(ov["grid_color1"], g1);
-    if (ov.contains("grid_color2"))
-      arr3(ov["grid_color2"], g2);
-    m_view->set_bg_gradient_colors(bg1[0], bg1[1], bg1[2], bg2[0], bg2[1], bg2[2]);
-    m_view->set_bg_gradient_method(method);
-    m_view->set_grid_colors(g1[0], g1[1], g1[2], g2[0], g2[1], g2[2]);
-  }
-  catch (...)
-  {
-  }
-}
-
-void GUI::parse_occt_view_ini_(const std::string& content)
-{
-  bool               in_section = false;
-  std::istringstream ss(content);
-  std::string        line;
-  float              bg1[3]     = {0.85f, 0.88f, 0.90f};
-  float              bg2[3]     = {0.45f, 0.55f, 0.60f};
-  int                method     = 1;
-  float              g1[3]      = {0.1f, 0.1f, 0.1f};
-  float              g2[3]      = {0.1f, 0.1f, 0.3f};
-  auto               read_float = [](const std::string& v) -> float
-  {
-    float              x = 0.f;
-    std::istringstream is(v);
-    is >> x;
-    return x;
-  };
-  while (std::getline(ss, line))
-  {
-    if (line.empty())
-      continue;
-    if (line[0] == '[')
-    {
-      in_section = (line == "[OCCTView]");
-      continue;
-    }
-    if (!in_section)
-      continue;
-    size_t eq = line.find('=');
-    if (eq == std::string::npos)
-      continue;
-    std::string key   = line.substr(0, eq);
-    std::string value = line.substr(eq + 1);
-    if (key == "BgR1")
-      bg1[0] = read_float(value);
-    else if (key == "BgG1")
-      bg1[1] = read_float(value);
-    else if (key == "BgB1")
-      bg1[2] = read_float(value);
-    else if (key == "BgR2")
-      bg2[0] = read_float(value);
-    else if (key == "BgG2")
-      bg2[1] = read_float(value);
-    else if (key == "BgB2")
-      bg2[2] = read_float(value);
-    else if (key == "BgMethod")
-    {
-      try
-      {
-        method = std::stoi(value);
-      }
-      catch (...)
-      {
-      }
-    }
-    else if (key == "GridR1")
-      g1[0] = read_float(value);
-    else if (key == "GridG1")
-      g1[1] = read_float(value);
-    else if (key == "GridB1")
-      g1[2] = read_float(value);
-    else if (key == "GridR2")
-      g2[0] = read_float(value);
-    else if (key == "GridG2")
-      g2[1] = read_float(value);
-    else if (key == "GridB2")
-      g2[2] = read_float(value);
-  }
-  m_view->set_bg_gradient_colors(bg1[0], bg1[1], bg1[2], bg2[0], bg2[1], bg2[2]);
-  m_view->set_bg_gradient_method(method);
-  m_view->set_grid_colors(g1[0], g1[1], g1[2], g2[0], g2[1], g2[2]);
-}
-
-void GUI::parse_gui_panes_settings_(const std::string& content)
-{
-  try
-  {
-    using namespace nlohmann;
-    const json j = json::parse(content);
-    if (!j.contains("gui") || !j["gui"].is_object())
-      return;
-    const json& g = j["gui"];
-    auto        b = [&g](const char* key, bool current)
-    {
-      return g.contains(key) && g[key].is_boolean() ? g[key].get<bool>() : current;
-    };
-    set_show_options(b("show_options", true));
-    set_show_sketch_list(b("show_sketch_list", true));
-    set_show_shape_list(b("show_shape_list", true));
-    set_log_window_visible(b("log_window_visible", true));
-    set_show_settings_dialog(b("show_settings_dialog", false));
-    m_show_lua_console = b("show_lua_console", true);
-    m_show_python_console = b("show_python_console", false);
-#ifndef NDEBUG
-    set_show_dbg(b("show_dbg", false));
-#endif
-  }
-  catch (...)
-  {
-    EZY_ASSERT_MSG(false, "Error parse_gui_panes_settings!");
-  }
-}
-
-void GUI::load_occt_view_settings_()
-{
-  std::string content = settings::load_with_defaults();
-
-  try
-  {
-    using namespace nlohmann;
-    const json j          = json::parse(content);
-    bool       version_ok = j.contains("version") && j["version"].is_string() &&
-                      j["version"].get<std::string>() == k_settings_version;
-    if (!version_ok)
-    {
-      content = settings::load_defaults();
-      if (!content.empty())
-      {
-        try
-        {
-          json j_default       = json::parse(content);
-          j_default["version"] = k_settings_version;
-          settings::save(j_default.dump(2));
-          content = j_default.dump(2);
-        }
-        catch (...)
-        {
-          settings::save(content);
-        }
-      }
-      log_message("Settings version mismatch or missing; loaded defaults.");
-    }
-  }
-  catch (...)
-  {
-    content = settings::load_defaults();
-    if (!content.empty())
-      settings::save(content);
-  }
-
-  EZY_ASSERT_MSG(!content.empty(), "Settings content empty!");
-
-  parse_occt_view_settings_(content);
-  parse_gui_panes_settings_(content);
-
-  try
-  {
-    using namespace nlohmann;
-    const json j = json::parse(content);
-    if (j.contains("imgui_ini") && j["imgui_ini"].is_string())
-    {
-      const std::string& ini = j["imgui_ini"].get<std::string>();
-      if (!ini.empty())
-        ImGui::LoadIniSettingsFromMemory(ini.c_str(), ini.size());
-    }
-  }
-  catch (...)
-  {
-    // EZY_ASSERT_MSG(false, "Settings invalid!");
-  }
-
-  log_message("Settings: loaded.");
-}
-
-void GUI::save_occt_view_settings()
-{
-  // log_message("save_occt_view_settings");
-  std::string content = settings::load_with_defaults();
-  using namespace nlohmann;
-  json j;
-  if (!content.empty())
-  {
-    try
-    {
-      j = json::parse(content);
-    }
-    catch (...)
-    {
-    }
-  }
-  float bg1[3], bg2[3], g1[3], g2[3];
-  m_view->get_bg_gradient_colors(bg1, bg2);
-  m_view->get_grid_colors(g1, g2);
-  int method     = m_view->get_bg_gradient_method();
-  j["occt_view"] = {
-      {         "bg_color1", {bg1[0], bg1[1], bg1[2]}},
-      {         "bg_color2", {bg2[0], bg2[1], bg2[2]}},
-      {"bg_gradient_method",                   method},
-      {       "grid_color1",    {g1[0], g1[1], g1[2]}},
-      {       "grid_color2",    {g2[0], g2[1], g2[2]}},
-  };
-  j["gui"] = {
-      {        "show_options",         m_show_options},
-      {    "show_sketch_list",     m_show_sketch_list},
-      {     "show_shape_list",      m_show_shape_list},
-      {  "log_window_visible",   m_log_window_visible},
-      {"show_settings_dialog", m_show_settings_dialog},
-      {    "show_lua_console",     m_show_lua_console},
-      { "show_python_console",  m_show_python_console},
-#ifndef NDEBUG
-      {            "show_dbg",             m_show_dbg},
-#endif
-  };
-  j["version"]          = k_settings_version;
-  const char* imgui_ini = ImGui::SaveIniSettingsToMemory(nullptr);
-  if (imgui_ini && *imgui_ini)
-    j["imgui_ini"] = std::string(imgui_ini);
-
-  settings::save(j.dump(2));
-  log_message("Settings: saved.");
 }
 
 // Render toolbar with ImGui
@@ -1206,417 +777,6 @@ void GUI::shape_list_()
     ImGui::PopID();
   }
   ImGui::End();
-}
-
-void GUI::options_()
-{
-  if (!m_show_options)
-    return;
-
-  if (!ImGui::Begin("Options", &m_show_options))
-  {
-    // Pane was collapsed, so skip rendering options to save resources
-    ImGui::End();
-    return;
-  }
-
-  constexpr std::array<std::string_view, 26> c_material_names = {
-      "Brass",
-      "Bronze",
-      "Copper",
-      "Gold",
-      "Pewter",
-      "Plastered",
-      "Plastified",
-      "Silver",
-      "Steel",
-      "Stone",
-      "Shiny plastified",
-      "Satin",
-      "Metalized",
-      "Ionized",
-      "Chrome",
-      "Aluminum",
-      "Obsidian",
-      "Neon",
-      "Jade",
-      "Charcoal",
-      "Water",
-      "Glass",
-      "Diamond",
-      "Transparent",
-      "Default",
-      "User defined"};
-
-  static std::vector<std::string> material_names;
-  if (material_names.empty())
-    for (int i = 0; i < Graphic3d_MaterialAspect::NumberOfMaterials(); ++i)
-    {
-      Graphic3d_MaterialAspect mat(static_cast<Graphic3d_NameOfMaterial>(i));
-      material_names.push_back(mat.MaterialName());
-    }
-
-  int current_item = int(m_view->get_default_material().Name());
-  if (ImGui::BeginCombo("Default Material##filter", material_names[current_item].data(),
-                        ImGuiComboFlags_WidthFitPreview | ImGuiComboFlags_HeightSmall))
-  // ImGuiComboFlags_HeightSmall))
-  {
-    for (int i = 0; i < static_cast<int>(material_names.size()); i++)
-      if (ImGui::Selectable(material_names[i].data(), current_item == i))
-      {
-        Graphic3d_MaterialAspect mat(static_cast<Graphic3d_NameOfMaterial>(i));
-        m_view->set_default_material(mat);
-      }
-
-    ImGui::EndCombo();
-  }
-
-  // clang-format off
-  switch (get_mode())
-  {
-    case Mode::Normal:                options_normal_mode_();                 break;
-    case Mode::Move:                  options_move_mode_();                   break;
-    case Mode::Rotate:                options_rotate_mode_();                 break;
-    case Mode::Scale:                 options_scale_mode_();                  break;
-    case Mode::Sketch_operation_axis: options_sketch_operation_axis_mode_();  break;
-    case Mode::Shape_chamfer:         options_shape_chamfer_mode_();          break;
-    case Mode::Shape_fillet:          options_shape_fillet_mode_();           break;
-    case Mode::Shape_polar_duplicate: options_shape_polar_duplicate_mode_();  break;
-    default:
-      break;
-  }
-  // clang-format on
-
-  if (is_sketch_mode(get_mode()))
-  {
-    float snap_dist = float(Sketch_nodes::get_snap_dist());
-    if (ImGui::InputFloat("Snap dist##float_value", &snap_dist, 1.0f, 2.0f, "%.2f"))
-      Sketch_nodes::set_snap_dist(snap_dist);
-  }
-
-  ImGui::End();
-}
-
-void GUI::settings_()
-{
-  if (!m_show_settings_dialog)
-    return;
-
-  ImGui::SetNextWindowSize(ImVec2(400, 0), ImGuiCond_FirstUseEver);  // Auto height
-  if (!ImGui::Begin("Settings", &m_show_settings_dialog, ImGuiWindowFlags_None))
-  {
-    ImGui::End();
-    //save_occt_view_settings();  // Persist that dialog was closed (e.g. via X)
-    return;
-  }
-
-  if (ImGui::Checkbox("Dark mode", &m_dark_mode))
-    save_occt_view_settings();
-
-  if (ImGui::CollapsingHeader("3D view background"))
-  {
-    float bg1[3], bg2[3];
-    m_view->get_bg_gradient_colors(bg1, bg2);
-    bool bg_changed = false;
-    if (ImGui::ColorEdit3("Background color 1", bg1, ImGuiColorEditFlags_Float))
-      bg_changed = true;
-    if (ImGui::ColorEdit3("Background color 2", bg2, ImGuiColorEditFlags_Float))
-      bg_changed = true;
-    if (bg_changed)
-    {
-      m_view->set_bg_gradient_colors(bg1[0], bg1[1], bg1[2], bg2[0], bg2[1], bg2[2]);
-      save_occt_view_settings();
-    }
-    const char* gradient_items[] = {"Horizontal", "Vertical", "Diagonal 1", "Diagonal 2",
-                                    "Corner 1", "Corner 2", "Corner 3", "Corner 4"};
-    int         grad             = m_view->get_bg_gradient_method();
-    if (ImGui::Combo("Gradient blend", &grad, gradient_items, 8))
-    {
-      m_view->set_bg_gradient_method(grad);
-      save_occt_view_settings();
-    }
-  }
-
-  if (ImGui::CollapsingHeader("3D view grid"))
-  {
-    float g1[3], g2[3];
-    m_view->get_grid_colors(g1, g2);
-    bool grid_changed = false;
-    if (ImGui::ColorEdit3("Grid color 1", g1, ImGuiColorEditFlags_Float))
-      grid_changed = true;
-    if (ImGui::ColorEdit3("Grid color 2", g2, ImGuiColorEditFlags_Float))
-      grid_changed = true;
-    if (grid_changed)
-    {
-      m_view->set_grid_colors(g1[0], g1[1], g1[2], g2[0], g2[1], g2[2]);
-      save_occt_view_settings();
-    }
-  }
-
-  if (ImGui::CollapsingHeader("Startup project"))
-  {
-    ImGui::TextWrapped(
-        "Save the current document (geometry, view, and tool mode) as what loads when EzyCad starts. "
-        "If none is saved, the install default (res/default.ezy) is used.");
-    if (ImGui::Button("Save current as startup project"))
-      save_startup_project_();
-    ImGui::SameLine();
-    if (ImGui::Button("Clear saved startup"))
-      clear_saved_startup_project_();
-  }
-
-  ImGui::Separator();
-  if (ImGui::Button("Defaults"))
-  {
-    std::string content = settings::load_defaults();
-    if (content.empty())
-      show_message("Failed to load default settings.");
-    else
-    {
-      try
-      {
-        using namespace nlohmann;
-        json j       = json::parse(content);
-        j["version"] = k_settings_version;
-        content      = j.dump(2);
-        settings::save(content);
-        parse_occt_view_settings_(content);
-        parse_gui_panes_settings_(content);
-        if (j.contains("imgui_ini") && j["imgui_ini"].is_string())
-        {
-          const std::string& ini = j["imgui_ini"].get<std::string>();
-          if (!ini.empty())
-            ImGui::LoadIniSettingsFromMemory(ini.c_str(), ini.size());
-        }
-        show_message("Default settings applied.");
-      }
-      catch (...)
-      {
-        show_message("Failed to apply default settings.");
-      }
-    }
-  }
-
-  ImGui::End();
-}
-
-void GUI::options_normal_mode_()
-{
-  constexpr std::array<std::string_view, 9> c_names_TopAbs_ShapeEnum =
-      {
-          "COMPOUND",
-          "COMPSOLID",
-          "SOLID",
-          "SHELL",
-          "FACE",
-          "WIRE",
-          "EDGE",
-          "VERTEX",
-          "SHAPE"};
-
-  // Shape type filter combo
-  int current_item = static_cast<int>(m_view->get_shp_selection_mode());
-  if (ImGui::BeginCombo("Selection Mode##filter", c_names_TopAbs_ShapeEnum[current_item].data(),
-                        ImGuiComboFlags_WidthFitPreview | ImGuiComboFlags_HeightSmall))
-  {
-    for (int i = 0; i < static_cast<int>(c_names_TopAbs_ShapeEnum.size()); i++)
-      if (ImGui::Selectable(c_names_TopAbs_ShapeEnum[i].data(), current_item == i))
-        m_view->set_shp_selection_mode(static_cast<TopAbs_ShapeEnum>(i));
-
-    ImGui::EndCombo();
-  }
-}
-
-void GUI::options_move_mode_()
-{
-  ImGui::TextUnformatted("Move constrain axis:");
-
-  Move_options& opts = m_view->shp_move().get_opts();
-
-  ImGui::Checkbox("X", &opts.constr_axis_x);
-  ImGui::SameLine();
-  ImGui::Checkbox("Y", &opts.constr_axis_y);
-  ImGui::SameLine();
-  ImGui::Checkbox("Z", &opts.constr_axis_z);
-}
-
-void GUI::options_scale_mode_()
-{
-}
-
-void GUI::options_rotate_mode_()
-{
-  ImGui::Text("Rotation Options");
-  ImGui::Separator();
-
-  // Use radio buttons for axis selection
-  int selected_axis = static_cast<int>(m_view->shp_rotate().get_rotation_axis());
-  if (ImGui::RadioButton("View to object axis", &selected_axis, static_cast<int>(Rotation_axis::View_to_object)))
-    m_view->shp_rotate().set_rotation_axis(Rotation_axis::View_to_object);
-
-  if (ImGui::RadioButton("Around X axis", &selected_axis, static_cast<int>(Rotation_axis::X_axis)))
-    m_view->shp_rotate().set_rotation_axis(Rotation_axis::X_axis);
-
-  if (ImGui::RadioButton("Around Y axis", &selected_axis, static_cast<int>(Rotation_axis::Y_axis)))
-    m_view->shp_rotate().set_rotation_axis(Rotation_axis::Y_axis);
-
-  if (ImGui::RadioButton("Around Z axis", &selected_axis, static_cast<int>(Rotation_axis::Z_axis)))
-    m_view->shp_rotate().set_rotation_axis(Rotation_axis::Z_axis);
-}
-
-void GUI::options_sketch_operation_axis_mode_()
-{
-  if (m_view->curr_sketch().has_operation_axis())
-  {
-    if (ImGui::Button("Mirror"))
-      m_view->curr_sketch().mirror_selected_edges();
-
-    static float revolve_angle = 360.0;
-
-    if (ImGui::Button("Revolve"))
-      m_view->revolve_selected(to_radians(revolve_angle));
-
-    ImGui::SetNextItemWidth(80.0f);
-    ImGui::SameLine();
-    ImGui::InputFloat("##float_value", &revolve_angle, 0.0f, 0.0f, "%.2f");
-
-    if (ImGui::Button("Clear axis"))
-      m_view->curr_sketch().clear_operation_axis();
-  }
-}
-
-void GUI::options_shape_chamfer_mode_()
-{
-  // Dropdown for Chamfer_mode
-  int current_mode = static_cast<int>(m_chamfer_mode);
-  if (ImGui::Combo("Chamfer Mode", &current_mode, c_chamfer_mode_strs.data(), (int) c_chamfer_mode_strs.size()))
-  {
-    m_chamfer_mode = static_cast<Chamfer_mode>(current_mode);
-    m_view->on_chamfer_mode();
-  }
-
-  // Convert from geometry units to display units for GUI
-  float chamfer_dist = float(m_view->shp_chamfer().get_chamfer_dist() / m_view->get_dimension_scale());
-  if (ImGui::InputFloat("Chamfer dist##float_value", &chamfer_dist, 0.0f, 0.0f, "%.2f"))
-  {
-    // Convert from display units to geometry units
-    m_view->shp_chamfer().set_chamfer_dist(chamfer_dist * m_view->get_dimension_scale());
-  }
-}
-
-void GUI::options_shape_fillet_mode_()
-{
-  // Dropdown for Fillet_mode
-  int current_mode = static_cast<int>(m_fillet_mode);
-  if (ImGui::Combo("Fillet Mode", &current_mode, c_fillet_mode_strs.data(), (int) c_fillet_mode_strs.size()))
-  {
-    m_fillet_mode = static_cast<Fillet_mode>(current_mode);
-    m_view->on_fillet_mode();
-  }
-
-  // Convert from geometry units to display units for GUI
-  float fillet_radius = float(m_view->shp_fillet().get_fillet_radius() / m_view->get_dimension_scale());
-  if (ImGui::InputFloat("Fillet radius##float_value", &fillet_radius, 0.0f, 0.0f, "%.2f"))
-  {
-    // Convert from display units to geometry units
-    m_view->shp_fillet().set_fillet_radius(fillet_radius * m_view->get_dimension_scale());
-  }
-}
-
-void GUI::options_shape_polar_duplicate_mode_()
-{
-  auto& polar_dup    = m_view->shp_polar_dup();
-  float polar_angle  = float(polar_dup.get_polar_angle());
-  int   num_elms     = int(polar_dup.get_num_elms());
-  bool  rotate_dups  = polar_dup.get_rotate_dups();
-  bool  combine_dups = polar_dup.get_combine_dups();
-
-  if (ImGui::InputFloat("Polar angle##float_value", &polar_angle, 0.0f, 0.0f, "%.2f"))
-    polar_dup.set_polar_angle(polar_angle);
-
-  if (ImGui::InputInt("Num Elms##int_value", &num_elms))
-    polar_dup.set_num_elms(num_elms);
-
-  if (ImGui::Checkbox("Rotate dups", &rotate_dups))
-    polar_dup.set_rotate_dups(rotate_dups);
-
-  if (ImGui::Checkbox("Combine dups", &combine_dups))
-    polar_dup.set_combine_dups(combine_dups);
-
-  if (ImGui::Button("Dup"))
-    if (Status s = polar_dup.dup(); !s.is_ok())
-      show_message(s.message());
-}
-
-void GUI::on_key_rotate_mode_(int key)
-{
-  const ScreenCoords screen_coords(glm::dvec2(ImGui::GetIO().MousePos.x, ImGui::GetIO().MousePos.y));
-
-  switch (key)
-  {
-    case GLFW_KEY_ESCAPE:
-      m_view->shp_rotate().cancel();
-      break;
-
-    case GLFW_KEY_ENTER:
-    case GLFW_KEY_KP_ENTER:
-      m_view->shp_rotate().finalize();
-      break;
-
-    case GLFW_KEY_TAB:
-      // Show angle input dialog
-      if (Status s = m_view->shp_rotate().show_angle_edit(screen_coords); !s.is_ok())
-        show_message(s.message());
-      break;
-
-    case GLFW_KEY_X:
-      // Toggle between X axis and View_to_object
-      if (m_view->shp_rotate().get_rotation_axis() == Rotation_axis::X_axis)
-        m_view->shp_rotate().set_rotation_axis(Rotation_axis::View_to_object);
-      else
-        m_view->shp_rotate().set_rotation_axis(Rotation_axis::X_axis);
-      break;
-
-    case GLFW_KEY_Y:
-      // Toggle between Y axis and View_to_object
-      if (m_view->shp_rotate().get_rotation_axis() == Rotation_axis::Y_axis)
-        m_view->shp_rotate().set_rotation_axis(Rotation_axis::View_to_object);
-      else
-        m_view->shp_rotate().set_rotation_axis(Rotation_axis::Y_axis);
-      break;
-
-    case GLFW_KEY_Z:
-      // Toggle between Z axis and View_to_object
-      if (m_view->shp_rotate().get_rotation_axis() == Rotation_axis::Z_axis)
-        m_view->shp_rotate().set_rotation_axis(Rotation_axis::View_to_object);
-      else
-        m_view->shp_rotate().set_rotation_axis(Rotation_axis::Z_axis);
-      break;
-  }
-}
-
-void GUI::on_key_move_mode_(int key)
-{
-  Move_options&      opts = m_view->shp_move().get_opts();
-  const ScreenCoords screen_coords(glm::dvec2(ImGui::GetIO().MousePos.x, ImGui::GetIO().MousePos.y));
-
-  switch (key)
-  {
-    case GLFW_KEY_X:
-      opts.constr_axis_x ^= 1;
-      break;
-    case GLFW_KEY_Y:
-      opts.constr_axis_y ^= 1;
-      break;
-    case GLFW_KEY_Z:
-      opts.constr_axis_z ^= 1;
-      break;
-    case GLFW_KEY_TAB:
-      m_view->shp_move().show_dist_edit(screen_coords);
-      break;
-    default:
-      break;
-  }
 }
 
 #ifndef NDEBUG
@@ -2058,6 +1218,12 @@ void GUI::export_file_dialog_(Export_format fmt)
       filter_pat  = "*.stl";
       filter_desc = "STL files";
       break;
+    case Export_format::Ply:
+      title       = "Export PLY";
+      def_name    = "export.ply";
+      filter_pat  = "*.ply";
+      filter_desc = "PLY files";
+      break;
   }
 
   char const* filter_patterns[1] = {filter_pat};
@@ -2087,6 +1253,10 @@ void GUI::export_file_dialog_(Export_format fmt)
       mem_path      = "/ezycad_export.stl";
       download_name = "export.stl";
       break;
+    case Export_format::Ply:
+      mem_path      = "/ezycad_export.ply";
+      download_name = "export.ply";
+      break;
   }
   const Status s = m_view->export_document(fmt, mem_path);
   if (!s.is_ok())
@@ -2110,22 +1280,26 @@ void GUI::import_file_dialog_()
 {
 #ifndef __EMSCRIPTEN__
   // Native: Use tinyfiledialogs
-  char const* filter_patterns[1] = {"*.step"};  // Restrict to .ezy files
+  char const* filter_patterns[3] = {"*.step", "*.stp", "*.ply"};
   char const* selected           = tinyfd_openFileDialog(
-      "Import Step file",  // Dialog title
-      "",                  // Default path (empty for OS default)
-      1,                   // Number of filter patterns
-      filter_patterns,     // Filter patterns (*.step)
-      "Step Files",        // Filter description
-      0                    // Single file selection
-  );
+      "Import STEP or PLY",
+      "",
+      3,
+      filter_patterns,
+      "STEP / PLY files",
+      0);
   if (selected)
   {
-    std::ifstream     file(selected);
-    const std::string step_str {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
-    if (file.good() && step_str != "")
-      on_import_file(selected, step_str);
-
+    // Binary mode required for PLY (mesh payload may contain 0x1A; Windows text mode treats that as EOF).
+    std::ifstream file(selected, std::ios::binary);
+    if (!file.is_open())
+    {
+      show_message("Error opening: " + std::filesystem::path(selected).filename().string());
+      return;
+    }
+    const std::string file_bytes {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+    if (!file_bytes.empty())
+      on_import_file(selected, file_bytes);
     else
       show_message("Error opening: " + std::filesystem::path(selected).filename().string());
   }
@@ -2225,8 +1399,23 @@ void GUI::on_file(const std::string& file_path, const std::string& json_str, boo
 
 void GUI::on_import_file(const std::string& file_path, const std::string& file_data)
 {
-  m_view->import_step(file_data);
-  show_message("Imported: " + std::filesystem::path(file_path).filename().string());
+  std::string ext = std::filesystem::path(file_path).extension().string();
+  for (char& c : ext)
+    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+  if (ext == ".ply")
+  {
+    if (!m_view->import_ply(file_data))
+      show_message("PLY import failed.");
+    else
+      show_message("Imported: " + std::filesystem::path(file_path).filename().string());
+    return;
+  }
+
+  if (Status st = m_view->import_step(file_data); !st.is_ok())
+    show_message(st.message());
+  else
+    show_message("Imported: " + std::filesystem::path(file_path).filename().string());
 }
 
 #ifdef __EMSCRIPTEN__
