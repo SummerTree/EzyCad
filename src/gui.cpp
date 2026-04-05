@@ -126,6 +126,7 @@ void GUI::render_gui()
   dist_edit_();
   angle_edit_();
   sketch_list_();
+  sketch_properties_dialog_();
   shape_list_();
   options_();
   message_status_window_();
@@ -237,7 +238,10 @@ void GUI::menu_bar_()
       import_file_dialog_();
 
     if (ImGui::MenuItem("Sketch underlay image..."))
+    {
+      m_underlay_import_sketch_target.reset();
       sketch_underlay_import_dialog_();
+    }
 
     if (ImGui::BeginMenu("Export"))
     {
@@ -741,14 +745,50 @@ void GUI::sketch_list_()
     if (m_show_tool_tips && ImGui::IsItemHovered())
       ImGui::SetTooltip("Visibility");
 
+    ImGui::SameLine();
+    ImGui::PushID(("uldisp" + id_suffix).c_str());
+    {
+      const bool has_ul = sketch->has_underlay();
+      bool       dummy_off {false};
+      bool       ul_vis   = has_ul && sketch->underlay_visible();
+      if (!has_ul)
+        ImGui::BeginDisabled();
+      bool* const vptr = has_ul ? &ul_vis : &dummy_off;
+      if (ImGui::Checkbox("", vptr) && has_ul)
+      {
+        sketch->underlay_set_visible(ul_vis);
+        if (m_underlay_panel_sketch == sketch.get())
+          m_ul_vis = ul_vis;
+      }
+      if (!has_ul)
+        ImGui::EndDisabled();
+      if (m_show_tool_tips && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip(
+            has_ul ? "Display underlay" : "Import an image in Sketch properties to enable the underlay.");
+    }
+    ImGui::PopID();
+
+    ImGui::SameLine();
+    ImGui::PushID(("props" + id_suffix).c_str());
+    if (ImGui::SmallButton("[P]"))
+    {
+      m_sketch_properties_sketch = sketch;
+      m_sketch_properties_open   = true;
+    }
+    if (m_show_tool_tips && ImGui::IsItemHovered())
+      ImGui::SetTooltip("Sketch properties");
+    ImGui::PopID();
+
     ++index;
     ImGui::PopID();
   }
 
   if (sketch_to_delete)
+  {
+    if (const auto p = m_sketch_properties_sketch.lock(); p && p == sketch_to_delete)
+      m_sketch_properties_open = false;
     m_view->remove_sketch(sketch_to_delete);
-
-  sketch_underlay_panel_();
+  }
 
   ImGui::End();
 }
@@ -785,7 +825,10 @@ void GUI::sketch_underlay_import_dialog_()
 
 void GUI::on_sketch_underlay_file(const std::string& file_path, const std::string& file_bytes)
 {
-  std::shared_ptr<Sketch> sk = m_view->curr_sketch_shared();
+  std::shared_ptr<Sketch> sk = m_underlay_import_sketch_target.lock();
+  m_underlay_import_sketch_target.reset();
+  if (!sk)
+    sk = m_view->curr_sketch_shared();
   m_view->push_undo_snapshot();
   if (!sk->load_underlay_image(file_bytes))
   {
@@ -796,11 +839,37 @@ void GUI::on_sketch_underlay_file(const std::string& file_path, const std::strin
   show_message("Underlay: " + std::filesystem::path(file_path).filename().string());
 }
 
-void GUI::sketch_underlay_panel_()
+void GUI::sketch_properties_dialog_()
 {
+  if (!m_sketch_properties_open)
+    return;
+  const auto sk = m_sketch_properties_sketch.lock();
+  if (!sk)
+  {
+    m_sketch_properties_open = false;
+    return;
+  }
+  ImGui::SetNextWindowSize(ImVec2(400, 0), ImGuiCond_FirstUseEver);
+  bool open = m_sketch_properties_open;
+  if (!ImGui::Begin("Sketch properties", &open, ImGuiWindowFlags_None))
+  {
+    m_sketch_properties_open = open;
+    ImGui::End();
+    return;
+  }
+  ImGui::TextUnformatted(sk->get_name().c_str());
   ImGui::Separator();
-  ImGui::TextUnformatted("Sketch image underlay (current sketch)");
-  std::shared_ptr<Sketch> sk = m_view->curr_sketch_shared();
+  sketch_underlay_panel_(sk);
+  m_sketch_properties_open = open;
+  ImGui::End();
+}
+
+void GUI::sketch_underlay_panel_(const std::shared_ptr<Sketch>& sk)
+{
+  EZY_ASSERT(sk);
+
+  ImGui::TextUnformatted("Image underlay");
+  ImGui::Separator();
 
   if (m_underlay_panel_sketch != sk.get())
   {
@@ -835,10 +904,16 @@ void GUI::sketch_underlay_panel_()
 
 #ifndef __EMSCRIPTEN__
   if (ImGui::Button("Import image..."))
+  {
+    m_underlay_import_sketch_target = sk;
     sketch_underlay_import_dialog_();
+  }
 #else
   if (ImGui::Button("Import image..."))
+  {
+    m_underlay_import_sketch_target = sk;
     sketch_underlay_file_dialog_async();
+  }
 #endif
 
   ImGui::SameLine();
@@ -867,9 +942,6 @@ void GUI::sketch_underlay_panel_()
 
   if (!sk->has_underlay())
     return;
-
-  if (ImGui::Checkbox("Underlay visible", &m_ul_vis))
-    sk->underlay_set_visible(m_ul_vis);
 
   if (ImGui::Checkbox("White paper → transparent", &m_ul_key_white))
     sk->underlay_set_key_white_transparent(m_ul_key_white);
