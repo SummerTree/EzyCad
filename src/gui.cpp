@@ -76,6 +76,22 @@ GUI::GUI()
   gui_instance = this;
 }
 
+ImFont* GUI::console_font() const
+{
+  ImFont* f = m_console_font;
+  if (!f || !ImGui::GetCurrentContext())
+    return nullptr;
+  ImFontAtlas* atlas = ImGui::GetIO().Fonts;
+  if (!atlas)
+    return nullptr;
+  for (int i = 0; i < atlas->Fonts.Size; ++i)
+  {
+    if (atlas->Fonts[i] == f)
+      return f;
+  }
+  return nullptr;
+}
+
 GUI::~GUI()
 {
   cleanup_log_redirection_();  // Clean up stream redirection
@@ -102,6 +118,7 @@ void GUI::render_gui()
     ImGui::StyleColorsDark();
   else
     ImGui::StyleColorsLight();
+  apply_imgui_rounding_from_members_();
 
   menu_bar_();
   toolbar_();
@@ -1057,8 +1074,9 @@ void GUI::python_console_()
   m_python_console->render(&m_show_python_console);
 }
 
-void GUI::init(GLFWwindow* window)
+void GUI::init(GLFWwindow* window, ImFont* console_font)
 {
+  m_console_font = console_font;
   initialize_toolbar_();
   settings::set_log_callback([this](const std::string& m)
                              { log_message(m); });
@@ -1488,8 +1506,7 @@ void GUI::import_file_dialog_()
       show_message("Error opening: " + std::filesystem::path(selected).filename().string());
   }
 #else
-  // Emscripten: Call async version (synchronous fallback for simplicity)
-  open_file_dialog_async("Open EzyCad project");
+  import_file_dialog_async();
 #endif
 }
 
@@ -1519,7 +1536,7 @@ void GUI::open_file_dialog_()
   }
 #else
   // Emscripten: Call async version (synchronous fallback for simplicity)
-  open_file_dialog_async("Open EzyCad project");
+  open_file_dialog_async();
 #endif
 }
 
@@ -1607,9 +1624,9 @@ void GUI::on_import_file(const std::string& file_path, const std::string& file_d
 }
 
 #ifdef __EMSCRIPTEN__
-void GUI::open_file_dialog_async(const char* title)
+void GUI::open_file_dialog_async()
 {
-  EM_ASM_ARGS({
+  EM_ASM({
     var input           = document.createElement('input');
     input.type          = 'file';
     input.accept        = '.ezy';
@@ -1631,6 +1648,38 @@ void GUI::open_file_dialog_async(const char* title)
           HEAPU8.set(contents, contentsPtr);
           // Call C++ callback with path and contents
           Module.ccall('on_file_selected', null, ['string', 'number', 'number'], [fileName, contentsPtr, length]);
+          _free(contentsPtr);
+        };
+        reader.readAsArrayBuffer(file);
+      }
+      document.body.removeChild(input);
+    };
+    input.click();
+  });
+}
+
+void GUI::import_file_dialog_async()
+{
+  EM_ASM({
+    var input           = document.createElement('input');
+    input.type          = 'file';
+    input.accept        = '.step,.stp,.ply';
+    input.style.display = 'none';
+    document.body.appendChild(input);
+    input.onchange = function(e)
+    {
+      var file = e.target.files[0];
+      if (file)
+      {
+        var reader    = new FileReader();
+        reader.onload = function(e)
+        {
+          var contents    = new Uint8Array(e.target.result);
+          var fileName    = file.name;
+          var length      = contents.length;
+          var contentsPtr = _malloc(length);
+          HEAPU8.set(contents, contentsPtr);
+          Module.ccall('on_import_file_selected', null, ['string', 'number', 'number'], [fileName, contentsPtr, length]);
           _free(contentsPtr);
         };
         reader.readAsArrayBuffer(file);
@@ -1676,6 +1725,12 @@ extern "C" void on_file_selected(const char* file_path, char* contents, int leng
 {
   const std::string json_str(contents, length);
   GUI::instance().on_file(file_path, json_str);
+}
+
+extern "C" void on_import_file_selected(const char* file_path, char* contents, int length)
+{
+  const std::string file_bytes(contents, static_cast<size_t>(length));
+  GUI::instance().on_import_file(file_path, file_bytes);
 }
 
 extern "C" void on_save_file_selected(const char* file_name)

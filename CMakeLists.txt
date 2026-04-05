@@ -256,7 +256,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Emscripten")
             -s USE_WEBGL2=1 \
             -s USE_GLFW=3 \
             -s USE_ZLIB=1 \
-            -s EXPORTED_FUNCTIONS=\"['_main', '_on_file_selected', '_on_save_file_selected', '_emscripten_save_settings_on_unload']\" \
+            -s EXPORTED_FUNCTIONS=\"['_main', '_on_file_selected', '_on_import_file_selected', '_on_save_file_selected', '_emscripten_save_settings_on_unload']\" \
             -s EXPORTED_RUNTIME_METHODS=\"['ccall']\" \
             -s FETCH=1 \
             --preload-file ${CMAKE_SOURCE_DIR}/third_party/imgui/fonts/DroidSans.ttf@/DroidSans.ttf \
@@ -289,7 +289,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Emscripten")
             -s USE_WEBGL2=1 \
             -s USE_GLFW=3 \
             -s USE_ZLIB=1 \
-            -s EXPORTED_FUNCTIONS=\"['_main', '_on_file_selected', '_on_save_file_selected', '_emscripten_save_settings_on_unload']\" \
+            -s EXPORTED_FUNCTIONS=\"['_main', '_on_file_selected', '_on_import_file_selected', '_on_save_file_selected', '_emscripten_save_settings_on_unload']\" \
             -s EXPORTED_RUNTIME_METHODS=\"['ccall']\" \
             -s FETCH=1 \
             --preload-file ${CMAKE_SOURCE_DIR}/third_party/imgui/fonts/DroidSans.ttf@/DroidSans.ttf \
@@ -620,6 +620,19 @@ foreach(f ${WEB_FILES})
 endforeach()
 source_group("web" FILES ${WEB_FILES_REL})
 target_sources(${PROJECT_NAME} PRIVATE ${WEB_FILES_REL})
+
+# Runtime assets: show res/ in the IDE (matches POST_BUILD copy to output dir)
+file(GLOB_RECURSE RES_FILES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/res/*")
+if(RES_FILES)
+  source_group(TREE "${CMAKE_SOURCE_DIR}/res" PREFIX "res" FILES ${RES_FILES})
+  set(RES_FILES_REL)
+  foreach(f ${RES_FILES})
+    file(RELATIVE_PATH f_rel "${CMAKE_SOURCE_DIR}" "${f}")
+    list(APPEND RES_FILES_REL "${f_rel}")
+  endforeach()
+  target_sources(${PROJECT_NAME} PRIVATE ${RES_FILES_REL})
+  set_source_files_properties(${RES_FILES_REL} PROPERTIES HEADER_FILE_ONLY TRUE)
+endif()
 
 # Add .clang-format and .gitignore to EzyCad and EzyCad_lib so they appear in VS and other IDEs (at project root)
 set(CLANG_FORMAT_FILE ${CMAKE_SOURCE_DIR}/.clang-format)
