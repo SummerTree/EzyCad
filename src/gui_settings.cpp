@@ -1,14 +1,14 @@
 // Settings dialog, JSON load/save, and OCCT view appearance from ezycad_settings.json.
 
-#include "gui.h"
-
+#include <algorithm>
+#include <nlohmann/json.hpp>
 #include <sstream>
 
-#include <nlohmann/json.hpp>
-
+#include "gui.h"
 #include "imgui.h"
 #include "occt_view.h"
 #include "settings.h"
+#include "sketch.h"
 
 namespace
 {
@@ -42,23 +42,25 @@ void GUI::save_occt_view_settings()
       {       "grid_color2",    {g2[0], g2[1], g2[2]}},
   };
   j["gui"] = {
-      {        "show_options",         m_show_options},
-      {    "show_sketch_list",     m_show_sketch_list},
-      {     "show_shape_list",      m_show_shape_list},
-      {  "log_window_visible",   m_log_window_visible},
-      {"show_settings_dialog", m_show_settings_dialog},
-      {           "dark_mode",            m_dark_mode},
-      {    "show_lua_console",     m_show_lua_console},
-      { "show_python_console",  m_show_python_console},
-      {   "edge_dim_label_h",     m_edge_dim_label_h},
-      {"load_last_opened_on_startup", m_load_last_opened_on_startup},
-      {   "last_opened_project_path",    m_last_opened_project_path},
-      {   "imgui_rounding_general",   m_imgui_rounding_general},
-      {      "imgui_rounding_scroll",      m_imgui_rounding_scroll},
-      {        "imgui_rounding_tabs",        m_imgui_rounding_tabs},
+      {               "show_options",            m_show_options                                     },
+      {           "show_sketch_list",                                             m_show_sketch_list},
+      {            "show_shape_list",                                              m_show_shape_list},
+      {         "log_window_visible",                                           m_log_window_visible},
+      {       "show_settings_dialog",                                         m_show_settings_dialog},
+      {                  "dark_mode",                                                    m_dark_mode},
+      {           "show_lua_console",                                             m_show_lua_console},
+      {        "show_python_console",                                          m_show_python_console},
+      {           "edge_dim_label_h",                                             m_edge_dim_label_h},
+      {"load_last_opened_on_startup",                                  m_load_last_opened_on_startup},
+      {   "last_opened_project_path",                                     m_last_opened_project_path},
+      {     "imgui_rounding_general",                                       m_imgui_rounding_general},
+      {      "imgui_rounding_scroll",                                        m_imgui_rounding_scroll},
+      {        "imgui_rounding_tabs",                                          m_imgui_rounding_tabs},
 #ifndef NDEBUG
-      {            "show_dbg",             m_show_dbg},
+      {                   "show_dbg",                                                     m_show_dbg},
 #endif
+      {   "underlay_highlight_color",
+       {m_underlay_highlight_color[0], m_underlay_highlight_color[1], m_underlay_highlight_color[2]}},
   };
   j["version"]          = k_settings_version;
   const char* imgui_ini = ImGui::SaveIniSettingsToMemory(nullptr);
@@ -232,8 +234,17 @@ void GUI::parse_gui_panes_settings_(const std::string& content)
     m_imgui_rounding_scroll  = round_from_json("imgui_rounding_scroll", fb_scroll);
     m_imgui_rounding_tabs    = round_from_json("imgui_rounding_tabs", fb_tabs);
 
+    if (g.contains("underlay_highlight_color") && g["underlay_highlight_color"].is_array() && g["underlay_highlight_color"].size() >= 3)
+    {
+      const json& a = g["underlay_highlight_color"];
+      for (size_t i = 0; i < 3; ++i)
+        if (a[static_cast<json::size_type>(i)].is_number())
+          m_underlay_highlight_color[i] =
+              std::clamp(a[static_cast<json::size_type>(i)].get<float>(), 0.f, 1.f);
+    }
+
 #ifndef NDEBUG
-      set_show_dbg(b("show_dbg", false));
+    set_show_dbg(b("show_dbg", false));
 #endif
   }
   catch (...)
@@ -241,7 +252,6 @@ void GUI::parse_gui_panes_settings_(const std::string& content)
     EZY_ASSERT_MSG(false, "Error parse_gui_panes_settings!");
   }
 }
-
 
 void GUI::load_occt_view_settings_()
 {
@@ -390,8 +400,8 @@ void GUI::settings_()
       ImGui::TextUnformatted("Gradient blend");
       ImGui::TableSetColumnIndex(1);
       const char* gradient_items[] = {"Horizontal", "Vertical", "Diagonal 1", "Diagonal 2",
-                                        "Corner 1", "Corner 2", "Corner 3", "Corner 4"};
-      int         grad               = m_view->get_bg_gradient_method();
+                                      "Corner 1", "Corner 2", "Corner 3", "Corner 4"};
+      int         grad             = m_view->get_bg_gradient_method();
       if (ImGui::Combo("##bg_grad", &grad, gradient_items, 8))
       {
         m_view->set_bg_gradient_method(grad);
@@ -438,6 +448,42 @@ void GUI::settings_()
     if (grid_changed)
     {
       m_view->set_grid_colors(g1[0], g1[1], g1[2], g2[0], g2[1], g2[2]);
+      save_occt_view_settings();
+    }
+  }
+
+  if (ImGui::CollapsingHeader("Sketch underlay"))
+  {
+    bool ul_changed = false;
+    if (ImGui::BeginTable("settings_underlay", 2, ImGuiTableFlags_SizingStretchProp))
+    {
+      ImGui::TableSetupColumn("label", ImGuiTableColumnFlags_WidthFixed, k_label_col_w);
+      ImGui::TableSetupColumn("control", ImGuiTableColumnFlags_WidthStretch);
+
+      ImGui::TableNextRow();
+      ImGui::TableSetColumnIndex(0);
+      ImGui::AlignTextToFramePadding();
+      ImGui::TextUnformatted("Highlight color");
+      ImGui::TableSetColumnIndex(1);
+      ul_changed |= ImGui::ColorEdit3("##underlay_hi", m_underlay_highlight_color, ImGuiColorEditFlags_Float);
+
+      ImGui::EndTable();
+    }
+#if 0  // Perhaps a mode, for more detail. A gui slider, each tick documents a new feature. 
+    ImGui::TextDisabled(
+        "Updates all sketch underlays immediately. Also used as the default when you import a new image. "
+        "Per-sketch overrides in Sketch List if needed.");
+#endif
+    if (ul_changed)
+    {
+      uint8_t hr, hg, hb;
+      underlay_highlight_color_rgb(hr, hg, hb);
+      for (const std::shared_ptr<Sketch>& sk : m_view->get_sketches())
+      {
+        if (sk && sk->has_underlay())
+          sk->underlay_set_line_tint_rgb(hr, hg, hb);
+      }
+      m_underlay_panel_sketch = nullptr;
       save_occt_view_settings();
     }
   }
@@ -511,6 +557,18 @@ void GUI::settings_()
   ImGui::End();
 }
 
+void GUI::underlay_highlight_color_rgb(uint8_t& r, uint8_t& g, uint8_t& b) const
+{
+  const auto to_u8 = [](float c) -> uint8_t
+  {
+    const float x = std::clamp(c, 0.f, 1.f) * 255.f;
+    return static_cast<uint8_t>(x + 0.5f);
+  };
+  r = to_u8(m_underlay_highlight_color[0]);
+  g = to_u8(m_underlay_highlight_color[1]);
+  b = to_u8(m_underlay_highlight_color[2]);
+}
+
 void GUI::imgui_rounding_fallbacks_from_theme_(float& general, float& scroll, float& tabs) const
 {
   ImGuiStyle s;
@@ -526,12 +584,12 @@ void GUI::imgui_rounding_fallbacks_from_theme_(float& general, float& scroll, fl
 
 void GUI::apply_imgui_rounding_from_members_()
 {
-  ImGuiStyle& st        = ImGui::GetStyle();
-  st.WindowRounding     = m_imgui_rounding_general;
-  st.ChildRounding      = m_imgui_rounding_general;
-  st.FrameRounding      = m_imgui_rounding_general;
-  st.PopupRounding      = m_imgui_rounding_general;
-  st.ScrollbarRounding  = m_imgui_rounding_scroll;
-  st.GrabRounding       = m_imgui_rounding_scroll;
-  st.TabRounding        = m_imgui_rounding_tabs;
+  ImGuiStyle& st       = ImGui::GetStyle();
+  st.WindowRounding    = m_imgui_rounding_general;
+  st.ChildRounding     = m_imgui_rounding_general;
+  st.FrameRounding     = m_imgui_rounding_general;
+  st.PopupRounding     = m_imgui_rounding_general;
+  st.ScrollbarRounding = m_imgui_rounding_scroll;
+  st.GrabRounding      = m_imgui_rounding_scroll;
+  st.TabRounding       = m_imgui_rounding_tabs;
 }

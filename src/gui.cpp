@@ -3,10 +3,10 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
-#include <unordered_set>
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
+#include <unordered_set>
 
 #include "settings.h"
 
@@ -21,8 +21,8 @@
 #include "imgui.h"
 #include "log.h"
 #include "lua_console.h"
-#include "python_console.h"
 #include "occt_view.h"
+#include "python_console.h"
 #include "sketch.h"
 
 // Must be here to prevent compiler warning
@@ -45,7 +45,8 @@ static bool is_valid_project_json(const std::string& s)
   }
 }
 
-namespace {
+namespace
+{
 
 // Shape List: when a row matches OCCT selection, ImGuiCol_Text is nudged brighter (RGB only).
 constexpr float k_shape_list_selected_text_rgb_scale =
@@ -150,7 +151,7 @@ void GUI::render_occt()
 void GUI::initialize_toolbar_()
 {
   m_toolbar_buttons = {
-      {                           load_texture("User.png"),  true,                  "Inspection mode",                         Mode::Normal},
+      {                           load_texture("User.png"),  true,"Inspection mode",                         Mode::Normal                                                                  },
       {        load_texture("Workbench_Sketcher_none.png"), false,           "Sketch inspection mode",         Mode::Sketch_inspection_mode},
       {             load_texture("Assembly_AxialMove.png"), false,                   "Shape move (g)",                           Mode::Move},
       {                   load_texture("Draft_Rotate.png"), false,                 "Shape rotate (r)",                         Mode::Rotate},
@@ -168,7 +169,7 @@ void GUI::initialize_toolbar_()
       {    load_texture("Sketcher_Create3PointCircle.png"), false,     "Add circle from three points",        Mode::Sketch_add_circle_3_pts},
       {            load_texture("Sketcher_CreateSlot.png"), false,                         "Add slot",                Mode::Sketch_add_slot},
       {       load_texture("TechDraw_LengthDimension.png"), false,
-       "Toggle edge dimension annotation (Options: length value placement)",         Mode::Sketch_toggle_edge_dim},
+       "Toggle edge dimension annotation (Options: length value placement)",         Mode::Sketch_toggle_edge_dim                          },
       {              load_texture("Design456_Extrude.png"), false,          "Extrude sketch face (e)",            Mode::Sketch_face_extrude},
       {             load_texture("PartDesign_Chamfer.png"), false,                          "Chamfer",                  Mode::Shape_chamfer},
       {              load_texture("PartDesign_Fillet.png"), false,                           "Fillet",                   Mode::Shape_fillet},
@@ -234,6 +235,9 @@ void GUI::menu_bar_()
 
     if (ImGui::MenuItem("Import"))
       import_file_dialog_();
+
+    if (ImGui::MenuItem("Sketch underlay image..."))
+      sketch_underlay_import_dialog_();
 
     if (ImGui::BeginMenu("Export"))
     {
@@ -744,7 +748,165 @@ void GUI::sketch_list_()
   if (sketch_to_delete)
     m_view->remove_sketch(sketch_to_delete);
 
+  sketch_underlay_panel_();
+
   ImGui::End();
+}
+
+void GUI::sketch_underlay_import_dialog_()
+{
+#ifndef __EMSCRIPTEN__
+  char const* filter_patterns[4] = {"*.png", "*.jpg", "*.jpeg", "*.bmp"};
+  char const* selected           = tinyfd_openFileDialog(
+      "Sketch underlay image",
+      "",
+      4,
+      filter_patterns,
+      "PNG / JPEG / BMP",
+      0);
+  if (selected)
+  {
+    std::ifstream file(selected, std::ios::binary);
+    if (!file.is_open())
+    {
+      show_message("Error opening: " + std::filesystem::path(selected).filename().string());
+      return;
+    }
+    const std::string file_bytes {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+    if (!file_bytes.empty())
+      on_sketch_underlay_file(selected, file_bytes);
+    else
+      show_message("Error opening: " + std::filesystem::path(selected).filename().string());
+  }
+#else
+  sketch_underlay_file_dialog_async();
+#endif
+}
+
+void GUI::on_sketch_underlay_file(const std::string& file_path, const std::string& file_bytes)
+{
+  std::shared_ptr<Sketch> sk = m_view->curr_sketch_shared();
+  m_view->push_undo_snapshot();
+  if (!sk->load_underlay_image(file_bytes))
+  {
+    show_message("Could not decode image: " + std::filesystem::path(file_path).filename().string());
+    return;
+  }
+  m_underlay_panel_sketch = nullptr;
+  show_message("Underlay: " + std::filesystem::path(file_path).filename().string());
+}
+
+void GUI::sketch_underlay_panel_()
+{
+  ImGui::Separator();
+  ImGui::TextUnformatted("Sketch image underlay (current sketch)");
+  std::shared_ptr<Sketch> sk = m_view->curr_sketch_shared();
+
+  if (m_underlay_panel_sketch != sk.get())
+  {
+    m_underlay_panel_sketch = sk.get();
+    if (sk->has_underlay())
+    {
+      sk->underlay_ui_params(m_ul_cx, m_ul_cy, m_ul_hw, m_ul_hh, m_ul_rot);
+      m_ul_opacity   = sk->underlay_opacity();
+      m_ul_vis       = sk->underlay_visible();
+      m_ul_key_white = sk->underlay_key_white_transparent();
+      m_ul_line_tint = sk->underlay_line_tint_enabled();
+      {
+        uint8_t tr, tg, tb;
+        sk->underlay_line_tint_rgb(tr, tg, tb);
+        m_ul_tint_col[0] = static_cast<float>(tr) / 255.f;
+        m_ul_tint_col[1] = static_cast<float>(tg) / 255.f;
+        m_ul_tint_col[2] = static_cast<float>(tb) / 255.f;
+      }
+    }
+    else
+    {
+      m_ul_cx = m_ul_cy = m_ul_hw = m_ul_hh = m_ul_rot = 0.;
+      m_ul_opacity                                     = 0.88f;
+      m_ul_vis                                         = true;
+      m_ul_key_white                                   = true;
+      m_ul_line_tint                                   = true;
+      m_ul_tint_col[0]                                 = 1.f;
+      m_ul_tint_col[1]                                 = 0.863f;
+      m_ul_tint_col[2]                                 = 0.f;
+    }
+  }
+
+#ifndef __EMSCRIPTEN__
+  if (ImGui::Button("Import image..."))
+    sketch_underlay_import_dialog_();
+#else
+  if (ImGui::Button("Import image..."))
+    sketch_underlay_file_dialog_async();
+#endif
+
+  ImGui::SameLine();
+  if (ImGui::Button("Remove underlay"))
+  {
+    if (sk->has_underlay())
+    {
+      m_view->push_undo_snapshot();
+      sk->clear_underlay();
+      m_underlay_panel_sketch = nullptr;
+    }
+  }
+
+  if (!sk->has_underlay())
+  {
+#if 0  // Perhaps a mode, for more detail. A gui slider, each tick documents a new feature. 
+    ImGui::TextDisabled("No underlay. Import PNG/JPEG/BMP. Adjust half-width/height to match real dimensions.");
+#endif
+    return;
+  }
+
+  if (ImGui::Checkbox("Underlay visible", &m_ul_vis))
+    sk->underlay_set_visible(m_ul_vis);
+
+  if (ImGui::Checkbox("White paper → transparent", &m_ul_key_white))
+    sk->underlay_set_key_white_transparent(m_ul_key_white);
+
+  if (m_show_tool_tips && ImGui::IsItemHovered())
+    ImGui::SetTooltip(
+        "Uses brightness: white background becomes clear; dark lines stay visible. "
+        "Turn off for full-color photos. Inverting the image is not needed for typical scans.");
+
+  if (ImGui::Checkbox("Tint visible lines", &m_ul_line_tint))
+    sk->underlay_set_line_tint_enabled(m_ul_line_tint);
+
+  if (m_show_tool_tips && ImGui::IsItemHovered())
+    ImGui::SetTooltip(
+        "Paints non-transparent pixels (after white key) with the line color. "
+        "Default yellow reads well on dark backgrounds.");
+
+  if (m_ul_line_tint)
+  {
+    if (ImGui::ColorEdit3("Line color", m_ul_tint_col))
+    {
+      const auto to_u8 = [](float c) -> uint8_t
+      {
+        const float x = std::clamp(c, 0.f, 1.f) * 255.f;
+        return static_cast<uint8_t>(x + 0.5f);
+      };
+      sk->underlay_set_line_tint_rgb(to_u8(m_ul_tint_col[0]), to_u8(m_ul_tint_col[1]), to_u8(m_ul_tint_col[2]));
+    }
+  }
+
+  if (ImGui::SliderFloat("Opacity", &m_ul_opacity, 0.f, 1.f, "%.2f"))
+    sk->underlay_set_opacity(m_ul_opacity);
+
+  ImGui::InputDouble("Center X", &m_ul_cx, 0.0, 0.0, "%.4f");
+  ImGui::InputDouble("Center Y", &m_ul_cy, 0.0, 0.0, "%.4f");
+  ImGui::InputDouble("Half width", &m_ul_hw, 0.0, 0.0, "%.4f");
+  ImGui::InputDouble("Half height", &m_ul_hh, 0.0, 0.0, "%.4f");
+  ImGui::InputDouble("Rotation (deg)", &m_ul_rot, 0.0, 0.0, "%.2f");
+
+  if (ImGui::Button("Apply transform"))
+  {
+    m_view->push_undo_snapshot();
+    sk->underlay_set_center_extents_rotation(m_ul_cx, m_ul_cy, m_ul_hw, m_ul_hh, m_ul_rot);
+    sk->underlay_ui_params(m_ul_cx, m_ul_cy, m_ul_hw, m_ul_hh, m_ul_rot);
+  }
 }
 
 void GUI::shape_list_()
@@ -772,18 +934,17 @@ void GUI::shape_list_()
 
   ImGui::Separator();
 
-  const std::vector<std::string>& mat_names = occt_material_combo_labels();
-  const int                       nmat      = static_cast<int>(mat_names.size());
+  const std::vector<std::string>& mat_names       = occt_material_combo_labels();
+  const int                       nmat            = static_cast<int>(mat_names.size());
   float                           mat_label_w_max = 0.0f;
   for (int mi = 0; mi < nmat; ++mi)
     mat_label_w_max =
         std::max(mat_label_w_max, ImGui::CalcTextSize(mat_names[static_cast<size_t>(mi)].c_str()).x);
-  const ImGuiStyle& st_mat        = ImGui::GetStyle();
+  const ImGuiStyle& st_mat      = ImGui::GetStyle();
   const float       mat_popup_w = std::min(
       440.0f,
       std::max(280.0f,
-               mat_label_w_max + st_mat.WindowPadding.x * 2.0f + st_mat.FramePadding.x * 2.0f + st_mat.ScrollbarSize
-                   + 8.0f));
+                     mat_label_w_max + st_mat.WindowPadding.x * 2.0f + st_mat.FramePadding.x * 2.0f + st_mat.ScrollbarSize + 8.0f));
 
   std::unordered_set<const AIS_Shape*> selected_in_viewer;
   for (const AIS_Shape_ptr& ais : m_view->get_selected())
@@ -805,10 +966,10 @@ void GUI::shape_list_()
                             ImVec4(header.x, header.y, header.z, 0.65f));
       const ImVec4 text = ImGui::GetStyleColorVec4(ImGuiCol_Text);
       ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(
-          std::min(1.0f, text.x * k_shape_list_selected_text_rgb_scale + k_shape_list_selected_text_rgb_bias),
-          std::min(1.0f, text.y * k_shape_list_selected_text_rgb_scale + k_shape_list_selected_text_rgb_bias),
-          std::min(1.0f, text.z * k_shape_list_selected_text_rgb_scale + k_shape_list_selected_text_rgb_bias),
-          text.w));
+                                               std::min(1.0f, text.x * k_shape_list_selected_text_rgb_scale + k_shape_list_selected_text_rgb_bias),
+                                               std::min(1.0f, text.y * k_shape_list_selected_text_rgb_scale + k_shape_list_selected_text_rgb_bias),
+                                               std::min(1.0f, text.z * k_shape_list_selected_text_rgb_scale + k_shape_list_selected_text_rgb_bias),
+                                               text.w));
       ImGui::BeginGroup();
     }
 
@@ -886,7 +1047,7 @@ void GUI::shape_list_()
     ImGui::PopStyleVar();
     if (m_show_tool_tips && ImGui::IsItemHovered())
       ImGui::SetTooltip("%s\n(right-click name: Material menu)", mat_names[static_cast<size_t>(mat_idx)].c_str());
-    
+
     ImGui::SetNextWindowSize(ImVec2(mat_popup_w, 0.0f), ImGuiCond_Appearing);
     if (ImGui::BeginPopup("mat_pick"))
     {
@@ -912,7 +1073,7 @@ void GUI::shape_list_()
       for (int i = 0; i < nmat; ++i)
         if (ImGui::MenuItem(mat_names[static_cast<size_t>(i)].c_str(), nullptr, i == mat_idx))
           apply_shape_material(i);
-      
+
       ImGui::EndPopup();
     }
     ImGui::PopID();
@@ -1690,6 +1851,38 @@ void GUI::import_file_dialog_async()
   });
 }
 
+void GUI::sketch_underlay_file_dialog_async()
+{
+  EM_ASM({
+    var input           = document.createElement('input');
+    input.type          = 'file';
+    input.accept        = 'image/png,image/jpeg,image/bmp,.png,.jpg,.jpeg,.bmp';
+    input.style.display = 'none';
+    document.body.appendChild(input);
+    input.onchange = function(e)
+    {
+      var file = e.target.files[0];
+      if (file)
+      {
+        var reader    = new FileReader();
+        reader.onload = function(e)
+        {
+          var contents    = new Uint8Array(e.target.result);
+          var fileName    = file.name;
+          var length      = contents.length;
+          var contentsPtr = _malloc(length);
+          HEAPU8.set(contents, contentsPtr);
+          Module.ccall('on_sketch_underlay_selected', null, ['string', 'number', 'number'], [fileName, contentsPtr, length]);
+          _free(contentsPtr);
+        };
+        reader.readAsArrayBuffer(file);
+      }
+      document.body.removeChild(input);
+    };
+    input.click();
+  });
+}
+
 void GUI::save_file_dialog_async(const char* title, const std::string& default_file, const std::string& json_str)
 {
   EM_ASM_ARGS({
@@ -1731,6 +1924,12 @@ extern "C" void on_import_file_selected(const char* file_path, char* contents, i
 {
   const std::string file_bytes(contents, static_cast<size_t>(length));
   GUI::instance().on_import_file(file_path, file_bytes);
+}
+
+extern "C" void on_sketch_underlay_selected(const char* file_path, char* contents, int length)
+{
+  const std::string file_bytes(contents, static_cast<size_t>(length));
+  GUI::instance().on_sketch_underlay_file(file_path, file_bytes);
 }
 
 extern "C" void on_save_file_selected(const char* file_name)
