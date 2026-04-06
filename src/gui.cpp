@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
@@ -115,6 +116,10 @@ GUI& GUI::instance()
 
 void GUI::render_gui()
 {
+  // Underlay transform sliders use sketch_plane_view_aabb_2d → pt_on_plane → view projection.
+  // FlushViewEvents must run before ImGui so the camera matches the latest pan/zoom/rotate (do_frame() runs later).
+  m_view->flush_view_events();
+
   if (m_dark_mode)
     ImGui::StyleColorsDark();
   else
@@ -203,11 +208,11 @@ void GUI::load_examples_list_()
 
     std::string path  = p.string();
     std::string label = p.filename().string();
-    m_example_files.emplace_back(std::move(label), std::move(path));
+    m_example_files.push_back(Example_file{std::move(label), std::move(path)});
   }
   std::sort(m_example_files.begin(), m_example_files.end(),
-            [](const auto& a, const auto& b)
-            { return a.first < b.first; });
+            [](const Example_file& a, const Example_file& b)
+            { return a.label < b.label; });
 }
 
 void GUI::menu_bar_()
@@ -262,15 +267,15 @@ void GUI::menu_bar_()
 
     if (ImGui::BeginMenu("Examples"))
     {
-      for (const auto& [label, path] : m_example_files)
-        if (ImGui::MenuItem(label.c_str()))
+      for (const Example_file& ex : m_example_files)
+        if (ImGui::MenuItem(ex.label.c_str()))
         {
-          std::ifstream file(path);
+          std::ifstream file(ex.path);
           std::string   json_str {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
           if (file.good() && !json_str.empty())
-            on_file(path, json_str);
+            on_file(ex.path, json_str);
           else
-            show_message("Error opening example: " + label);
+            show_message("Error opening example: " + ex.label);
         }
 
       ImGui::EndMenu();
@@ -557,7 +562,8 @@ void GUI::set_dist_edit(float dist, std::function<void(float, bool)>&& callback,
   else
     m_dist_edit_loc = ScreenCoords(glm::dvec2(ImGui::GetIO().MousePos.x, ImGui::GetIO().MousePos.y));
 
-  m_dist_callback = std::move(callback);
+  m_dist_callback           = std::move(callback);
+  m_dist_edit_focus_pending = true;
 }
 
 void GUI::hide_dist_edit()
@@ -590,8 +596,13 @@ void GUI::dist_edit_()
                    ImGuiWindowFlags_AlwaysAutoResize |
                    ImGuiWindowFlags_NoSavedSettings);
 
-  ImGui::SetNextItemWidth(80.0f);
-  ImGui::SetKeyboardFocusHere();
+  ImGui::SetNextItemWidth(72.0f);
+  // Focusing every frame prevents IsItemDeactivatedAfterEdit (click away / Tab) from ever committing.
+  if (m_dist_edit_focus_pending)
+  {
+    ImGui::SetKeyboardFocusHere(0);
+    m_dist_edit_focus_pending = false;
+  }
 
   // Add a small input float widget and check for changes
   if (ImGui::InputFloat("##dist_edit_float_value", &m_dist_val, 0.0f, 0.0f, "%.2f"))
@@ -600,6 +611,14 @@ void GUI::dist_edit_()
     m_dist_val = std::round(m_dist_val * 100.0f) / 100.0f;
 
   if (ImGui::IsItemDeactivatedAfterEdit() && m_dist_callback)
+  {
+    std::function<void(float, bool)> callback;
+    std::swap(callback, m_dist_callback);
+    callback(m_dist_val, true);
+  }
+
+  ImGui::SameLine();
+  if (ImGui::SmallButton("OK") && m_dist_callback)
   {
     std::function<void(float, bool)> callback;
     std::swap(callback, m_dist_callback);
@@ -622,7 +641,8 @@ void GUI::set_angle_edit(float angle, std::function<void(float, bool)>&& callbac
   else
     m_angle_edit_loc = ScreenCoords(glm::dvec2(ImGui::GetIO().MousePos.x, ImGui::GetIO().MousePos.y));
 
-  m_angle_callback = std::move(callback);
+  m_angle_callback           = std::move(callback);
+  m_angle_edit_focus_pending = true;
 }
 
 void GUI::hide_angle_edit()
@@ -660,8 +680,12 @@ void GUI::angle_edit_()
                    ImGuiWindowFlags_AlwaysAutoResize |
                    ImGuiWindowFlags_NoSavedSettings);
 
-  ImGui::SetNextItemWidth(80.0f);
-  ImGui::SetKeyboardFocusHere();
+  ImGui::SetNextItemWidth(72.0f);
+  if (m_angle_edit_focus_pending)
+  {
+    ImGui::SetKeyboardFocusHere(0);
+    m_angle_edit_focus_pending = false;
+  }
 
   // Add a small input float widget and check for changes
   if (ImGui::InputFloat("##angle_edit_float_value", &m_angle_val, 0.0f, 0.0f, "%.2f"))
@@ -670,6 +694,14 @@ void GUI::angle_edit_()
     m_angle_val = std::round(m_angle_val * 100.0f) / 100.0f;
 
   if (ImGui::IsItemDeactivatedAfterEdit() && m_angle_callback)
+  {
+    std::function<void(float, bool)> callback;
+    std::swap(callback, m_angle_callback);
+    callback(m_angle_val, true);
+  }
+
+  ImGui::SameLine();
+  if (ImGui::SmallButton("OK") && m_angle_callback)
   {
     std::function<void(float, bool)> callback;
     std::swap(callback, m_angle_callback);
@@ -775,8 +807,10 @@ void GUI::sketch_list_()
       m_sketch_properties_sketch = sketch;
       m_sketch_properties_open   = true;
     }
+
     if (m_show_tool_tips && ImGui::IsItemHovered())
       ImGui::SetTooltip("Sketch properties");
+
     ImGui::PopID();
 
     ++index;
@@ -843,12 +877,14 @@ void GUI::sketch_properties_dialog_()
 {
   if (!m_sketch_properties_open)
     return;
+
   const auto sk = m_sketch_properties_sketch.lock();
   if (!sk)
   {
     m_sketch_properties_open = false;
     return;
   }
+
   ImGui::SetNextWindowSize(ImVec2(400, 0), ImGuiCond_FirstUseEver);
   bool open = m_sketch_properties_open;
   if (!ImGui::Begin("Sketch properties", &open, ImGuiWindowFlags_None))
@@ -857,14 +893,15 @@ void GUI::sketch_properties_dialog_()
     ImGui::End();
     return;
   }
+
   ImGui::TextUnformatted(sk->get_name().c_str());
   ImGui::Separator();
-  sketch_underlay_panel_(sk);
+  sketch_underlay_panel_settings_(sk);
   m_sketch_properties_open = open;
   ImGui::End();
 }
 
-void GUI::sketch_underlay_panel_(const std::shared_ptr<Sketch>& sk)
+void GUI::sketch_underlay_panel_settings_(const std::shared_ptr<Sketch>& sk)
 {
   EZY_ASSERT(sk);
 
@@ -935,7 +972,7 @@ void GUI::sketch_underlay_panel_(const std::shared_ptr<Sketch>& sk)
     ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
     ImGui::TextDisabled(
         "Import PNG/JPEG/BMP as a sketch underlay. Adjust half-width, half-height, center, and rotation "
-        "to match real dimensions, then Apply transform.");
+        "to match real dimensions; changes apply in real time.");
     ImGui::PopTextWrapPos();
     ImGui::EndTooltip();
   }
@@ -975,17 +1012,331 @@ void GUI::sketch_underlay_panel_(const std::shared_ptr<Sketch>& sk)
   if (ImGui::SliderFloat("Opacity", &m_ul_opacity, 0.f, 1.f, "%.2f"))
     sk->underlay_set_opacity(m_ul_opacity);
 
-  ImGui::InputDouble("Center X", &m_ul_cx, 0.0, 0.0, "%.4f");
-  ImGui::InputDouble("Center Y", &m_ul_cy, 0.0, 0.0, "%.4f");
-  ImGui::InputDouble("Half width", &m_ul_hw, 0.0, 0.0, "%.4f");
-  ImGui::InputDouble("Half height", &m_ul_hh, 0.0, 0.0, "%.4f");
-  ImGui::InputDouble("Rotation (deg)", &m_ul_rot, 0.0, 0.0, "%.2f");
-
-  if (ImGui::Button("Apply transform"))
+  ImGui::Separator();
+  ImGui::TextUnformatted("Calibrate from sketch edges");
   {
+    const bool sk_is_cur = (m_view->curr_sketch_shared() == sk);
+    if (!sk_is_cur)
+      ImGui::TextDisabled("(Make this sketch current in the sketch list to pick.)");
+
+    const bool pick_x = m_underlay_calib_phase == Underlay_calib_phase::PickX1 ||
+                        m_underlay_calib_phase == Underlay_calib_phase::PickX2 ||
+                        m_underlay_calib_phase == Underlay_calib_phase::AwaitDistX;
+    const bool pick_y = m_underlay_calib_phase == Underlay_calib_phase::PickY1 ||
+                        m_underlay_calib_phase == Underlay_calib_phase::PickY2 ||
+                        m_underlay_calib_phase == Underlay_calib_phase::AwaitDistY;
+
+    if (pick_x || pick_y)
+    {
+      const char* hint = "";
+      switch (m_underlay_calib_phase)
+      {
+        case Underlay_calib_phase::PickX1:
+          hint = "Click first point: corner at bitmap (0,0).";
+          break;
+        case Underlay_calib_phase::PickX2:
+          hint = "Click second point: end of width (bitmap +U), like a line edge.";
+          break;
+        case Underlay_calib_phase::AwaitDistX:
+          hint = "Enter the drawing distance for X (dimension popup). Y length is set from image aspect (H:W).";
+          break;
+        case Underlay_calib_phase::PickY1:
+          hint = "Click first point along image height (+V).";
+          break;
+        case Underlay_calib_phase::PickY2:
+          hint = "Click second point: end of height (+V).";
+          break;
+        case Underlay_calib_phase::AwaitDistY:
+          hint = "Enter the drawing distance for Y (dimension popup).";
+          break;
+        default:
+          break;
+      }
+      ImGui::TextColored(ImVec4(1.0f, 0.82f, 0.25f, 1.0f), "%s", hint);
+    }
+
+    ImGui::BeginDisabled(!sk_is_cur || pick_y);
+    if (ImGui::Button("Set X from edge…"))
+      begin_underlay_calib_set_x_(sk);
+    ImGui::EndDisabled();
+    if (m_show_tool_tips && ImGui::IsItemHovered())
+      ImGui::SetTooltip(
+          "Two clicks along width (+U), then type the real drawing distance (same units as sketch dimensions). "
+          "Y is set from image aspect until you use Set Y.");
+
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!sk_is_cur || !m_underlay_calib_have_x || pick_x);
+    if (ImGui::Button("Set Y from edge…"))
+      begin_underlay_calib_set_y_(sk);
+    ImGui::EndDisabled();
+    if (m_show_tool_tips && ImGui::IsItemHovered())
+      ImGui::SetTooltip("After Set X: two clicks along height (+V), then enter the drawing distance for Y.");
+
+  }
+
+  ImGui::Separator();
+  ImGui::TextUnformatted("Transform (sketch plane, vs. current view)");
+  {
+    const ImGuiIO& io = ImGui::GetIO();
+    double           min_u = 0., min_v = 0., max_u = 1., max_v = 1.;
+    const bool       have_view =
+        m_view->sketch_plane_view_aabb_2d(sk->get_plane(), static_cast<double>(io.DisplaySize.x),
+                                          static_cast<double>(io.DisplaySize.y), min_u, min_v, max_u, max_v);
+    if (!have_view)
+    {
+      constexpr double k_fallback = 250.0;
+      // m_ul_cx / m_ul_cy stay sketch-plane gp_Pnt2d X / Y (same as underlay_ui_params).
+      min_u = m_ul_cx - k_fallback;
+      max_u = m_ul_cx + k_fallback;
+      min_v = m_ul_cy - k_fallback;
+      max_v = m_ul_cy + k_fallback;
+    }
+
+    const double span_u = std::max(max_u - min_u, 1e-6);
+    const double span_v = std::max(max_v - min_v, 1e-6);
+    const double half_span_u = 0.5 * span_u;
+    const double half_span_v = 0.5 * span_v;
+    // Allow underlay larger than the visible frustum (trace paper / zoomed views).
+    const double max_half_w = std::max(std::hypot(half_span_u, half_span_v) * 2.5, 1e-3);
+    const double max_half_h = max_half_w;
+    constexpr double k_min_half = 1e-6;
+    double           rot_min = -180.0;
+    double           rot_max = 180.0;
+
+    auto apply_ul_xform = [&]()
+    { sk->underlay_set_center_extents_rotation(m_ul_cx, m_ul_cy, m_ul_hw, m_ul_hh, m_ul_rot); };
+
+    auto transform_slider = [&](const char* label, ImGuiDataType type, void* p_data, const void* p_min,
+                                const void* p_max, const char* format, ImGuiSliderFlags flags = 0)
+    {
+      const bool changed = ImGui::SliderScalar(label, type, p_data, p_min, p_max, format, flags);
+      if (ImGui::IsItemActivated())
+        m_view->push_undo_snapshot();
+      if (changed)
+        apply_ul_xform();
+    };
+
+    // Labels match typical sketch axes on screen: "Center X" drives plane Y (gp_Pnt2d::Y / view v), "Center Y" plane X (u).
+    transform_slider("Center X", ImGuiDataType_Double, &m_ul_cy, &min_v, &max_v, "%.4f", ImGuiSliderFlags_ClampOnInput);
+    transform_slider("Center Y", ImGuiDataType_Double, &m_ul_cx, &min_u, &max_u, "%.4f", ImGuiSliderFlags_ClampOnInput);
+    transform_slider("Half width", ImGuiDataType_Double, &m_ul_hw, &k_min_half, &max_half_w, "%.4f",
+                     ImGuiSliderFlags_ClampOnInput | ImGuiSliderFlags_Logarithmic);
+    transform_slider("Half height", ImGuiDataType_Double, &m_ul_hh, &k_min_half, &max_half_h, "%.4f",
+                     ImGuiSliderFlags_ClampOnInput | ImGuiSliderFlags_Logarithmic);
+    transform_slider("Rotation (deg)", ImGuiDataType_Double, &m_ul_rot, &rot_min, &rot_max, "%.1f",
+                     ImGuiSliderFlags_ClampOnInput);
+  }
+}
+
+void GUI::cancel_underlay_calib_()
+{
+  m_dist_callback = nullptr;
+  m_underlay_calib_phase   = Underlay_calib_phase::None;
+  m_underlay_calib_sketch_wk.reset();
+  m_underlay_calib_have_x  = false;
+  m_underlay_calib_axis_u  = gp_Vec2d(0., 0.);
+}
+
+void GUI::begin_underlay_calib_set_x_(const std::shared_ptr<Sketch>& sk)
+{
+  if (!sk || !sk->has_underlay())
+    return;
+  if (m_view->curr_sketch_shared() != sk)
+  {
+    show_message("Make this sketch current in the sketch list, then try again.");
+    return;
+  }
+  cancel_underlay_calib_();
+  m_underlay_calib_sketch_wk = sk;
+  m_underlay_calib_phase     = Underlay_calib_phase::PickX1;
+  show_message(
+      "Underlay X: click corner (0,0), then point along +U; you will enter the drawing distance for that span.");
+}
+
+void GUI::begin_underlay_calib_set_y_(const std::shared_ptr<Sketch>& sk)
+{
+  if (!sk || !sk->has_underlay())
+    return;
+  if (!m_underlay_calib_have_x)
+  {
+    show_message("Use Set X from edge first (two points along image width).");
+    return;
+  }
+  if (m_view->curr_sketch_shared() != sk)
+  {
+    show_message("Make this sketch current in the sketch list, then try again.");
+    return;
+  }
+  m_underlay_calib_sketch_wk = sk;
+  m_underlay_calib_phase     = Underlay_calib_phase::PickY1;
+  show_message("Underlay Y: click two points along +V, then enter the drawing distance for that span.");
+}
+
+void GUI::underlay_calib_prompt_x_distance_(const std::shared_ptr<Sketch>& sk)
+{
+  m_underlay_calib_phase = Underlay_calib_phase::AwaitDistX;
+  const double L_model   = m_underlay_calib_x0.Distance(m_underlay_calib_x1);
+  const float  dist_show = static_cast<float>(L_model / m_view->get_dimension_scale());
+  const ScreenCoords spos(glm::dvec2(ImGui::GetIO().MousePos.x, ImGui::GetIO().MousePos.y));
+
+  std::weak_ptr<Sketch> wk = sk;
+  auto                  on_dist = [this, wk](float new_dist, bool is_final)
+  {
+    if (!is_final)
+      return;
+    const std::shared_ptr<Sketch> s = wk.lock();
+    if (!s || !s->has_underlay())
+    {
+      m_dist_callback = nullptr;
+      cancel_underlay_calib_();
+      return;
+    }
+    if (m_underlay_calib_phase != Underlay_calib_phase::AwaitDistX)
+      return;
+
+    const double Dx = static_cast<double>(new_dist) * m_view->get_dimension_scale();
+    if (Dx <= 1e-12)
+    {
+      show_message("Distance must be positive.");
+      return;
+    }
+
     m_view->push_undo_snapshot();
-    sk->underlay_set_center_extents_rotation(m_ul_cx, m_ul_cy, m_ul_hw, m_ul_hh, m_ul_rot);
-    sk->underlay_ui_params(m_ul_cx, m_ul_cy, m_ul_hw, m_ul_hh, m_ul_rot);
+    if (!s->underlay_rescale_uv_chord_to_length(m_underlay_calib_x0, m_underlay_calib_x1, Dx))
+    {
+      m_view->pop_undo_snapshot();
+      show_message("Could not calibrate X (underlay axes degenerate or segment too short).");
+      return;
+    }
+    m_underlay_calib_axis_u = s->underlay_axis_u_vec();
+    s->underlay_ui_params(m_ul_cx, m_ul_cy, m_ul_hw, m_ul_hh, m_ul_rot);
+    m_underlay_panel_sketch = nullptr;
+
+    m_dist_callback          = nullptr;
+    m_underlay_calib_phase   = Underlay_calib_phase::None;
+    m_underlay_calib_have_x  = true;
+    show_message("X scale applied to the picked segment. Use Set Y from edge for the vertical span and its distance.");
+  };
+
+  set_dist_edit(dist_show, std::move(on_dist), spos);
+}
+
+void GUI::underlay_calib_prompt_y_distance_(const std::shared_ptr<Sketch>& sk)
+{
+  m_underlay_calib_phase = Underlay_calib_phase::AwaitDistY;
+  const double L_model   = m_underlay_calib_y0.Distance(m_underlay_calib_y1);
+  const float  dist_show = static_cast<float>(L_model / m_view->get_dimension_scale());
+  const ScreenCoords spos(glm::dvec2(ImGui::GetIO().MousePos.x, ImGui::GetIO().MousePos.y));
+
+  std::weak_ptr<Sketch> wk = sk;
+  auto                  on_dist = [this, wk](float new_dist, bool is_final)
+  {
+    if (!is_final)
+      return;
+    const std::shared_ptr<Sketch> s = wk.lock();
+    if (!s || !s->has_underlay())
+    {
+      m_dist_callback = nullptr;
+      cancel_underlay_calib_();
+      return;
+    }
+    if (m_underlay_calib_phase != Underlay_calib_phase::AwaitDistY)
+      return;
+
+    const double Dy = static_cast<double>(new_dist) * m_view->get_dimension_scale();
+    if (Dy <= 1e-12)
+    {
+      show_message("Distance must be positive.");
+      return;
+    }
+
+    m_view->push_undo_snapshot();
+    if (!s->underlay_rescale_v_chord_to_length(m_underlay_calib_y0, m_underlay_calib_y1, Dy))
+    {
+      m_view->pop_undo_snapshot();
+      show_message(
+          "Set Y: picks need a clear span along image height (not along the same edge as X only). Try two points further apart in V.");
+      return;
+    }
+    s->underlay_ui_params(m_ul_cx, m_ul_cy, m_ul_hw, m_ul_hh, m_ul_rot);
+    m_underlay_panel_sketch = nullptr;
+
+    m_dist_callback = nullptr;
+    cancel_underlay_calib_();
+    show_message("Underlay X/Y calibration complete.");
+  };
+
+  set_dist_edit(dist_show, std::move(on_dist), spos);
+}
+
+bool GUI::try_underlay_calib_click_(const ScreenCoords& screen_coords)
+{
+  if (m_underlay_calib_phase == Underlay_calib_phase::None)
+    return false;
+
+  if (m_underlay_calib_phase == Underlay_calib_phase::AwaitDistX ||
+      m_underlay_calib_phase == Underlay_calib_phase::AwaitDistY)
+    return true;
+
+  const std::shared_ptr<Sketch> sk     = m_underlay_calib_sketch_wk.lock();
+  const std::shared_ptr<Sketch> sk_cur = m_view->curr_sketch_shared();
+  if (!sk || !sk_cur || sk != sk_cur)
+  {
+    cancel_underlay_calib_();
+    show_message("Underlay calibration canceled.");
+    return true;
+  }
+  if (!sk->has_underlay())
+  {
+    cancel_underlay_calib_();
+    return true;
+  }
+
+  const std::optional<gp_Pnt2d> pt = sk->pick_point_for_underlay_calib(screen_coords);
+  if (!pt)
+    return true;
+
+  auto too_short = [](const gp_Pnt2d& a, const gp_Pnt2d& b)
+  {
+    const double dx = b.X() - a.X();
+    const double dy = b.Y() - a.Y();
+    return dx * dx + dy * dy <= 1e-16;
+  };
+
+  switch (m_underlay_calib_phase)
+  {
+    case Underlay_calib_phase::PickX1:
+      m_underlay_calib_x0  = *pt;
+      m_underlay_calib_phase = Underlay_calib_phase::PickX2;
+      show_message("Underlay X: click second point (end of width / +U).");
+      return true;
+    case Underlay_calib_phase::PickX2:
+      if (too_short(m_underlay_calib_x0, *pt))
+      {
+        show_message("X segment too short.");
+        return true;
+      }
+      m_underlay_calib_x1 = *pt;
+      show_message("Enter drawing distance for X (same unit convention as sketch edge dimensions).");
+      underlay_calib_prompt_x_distance_(sk);
+      return true;
+    case Underlay_calib_phase::PickY1:
+      m_underlay_calib_y0  = *pt;
+      m_underlay_calib_phase = Underlay_calib_phase::PickY2;
+      show_message("Underlay Y: click second point (end of height / +V).");
+      return true;
+    case Underlay_calib_phase::PickY2:
+      if (too_short(m_underlay_calib_y0, *pt))
+      {
+        show_message("Y segment too short.");
+        return true;
+      }
+      m_underlay_calib_y1 = *pt;
+      show_message("Enter drawing distance for Y.");
+      underlay_calib_prompt_y_distance_(sk);
+      return true;
+    default:
+      return false;
   }
 }
 
@@ -1520,9 +1871,17 @@ void GUI::on_mouse_pos(const ScreenCoords& screen_coords)
 
 void GUI::on_mouse_button(int button, int action, int mods)
 {
-  m_view->on_mouse_button(button, action, mods);
-
   const ScreenCoords screen_coords(glm::dvec2(ImGui::GetIO().MousePos.x, ImGui::GetIO().MousePos.y));
+
+  if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && mods == 0)
+    if (try_underlay_calib_click_(screen_coords))
+    {
+      m_view->on_mouse_move(screen_coords);
+      m_view->ctx().UpdateCurrentViewer();
+      return;
+    }
+
+  m_view->on_mouse_button(button, action, mods);
 
   m_view->on_mouse_move(screen_coords);
   m_view->ctx().UpdateCurrentViewer();

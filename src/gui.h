@@ -1,14 +1,15 @@
 #pragma once
 
-#include <cstdint>
 #include <chrono>  // For message status window (from previous request)
+#include <cstdint>
 #include <functional>
 #include <glm/glm.hpp>
+#include <gp_Pnt2d.hxx>
+#include <gp_Vec2d.hxx>
 #include <memory>
 #include <string>  // Added for log messages
-#include <utility>
 #include <variant>
-#include <vector>  // Added for log storage
+//#include <vector>  // Added for log storage
 
 #include "imgui.h"
 #include "log.h"
@@ -29,6 +30,25 @@ enum class Command
   _count
 };
 
+/// Two-segment picks for underlay X/Y calibration (Sketch properties pane).
+enum class Underlay_calib_phase : std::uint8_t
+{
+  None,
+  PickX1,
+  PickX2,
+  AwaitDistX,
+  PickY1,
+  PickY2,
+  AwaitDistY
+};
+
+/// One entry under File > Examples (menu label + path to `.ezy` on disk).
+struct Example_file
+{
+  std::string label;
+  std::string path;
+};
+
 class GUI
 {
  public:
@@ -42,7 +62,10 @@ class GUI
   void init(GLFWwindow* window, ImFont* console_font);
 
   /// Monospace font for script console (normally set via init() from main after io.Fonts load).
-  void    set_console_font(ImFont* font) { m_console_font = font; }
+  void set_console_font(ImFont* font)
+  {
+    m_console_font = font;
+  }
   ImFont* console_font() const;
 
   void render_gui();
@@ -85,8 +108,8 @@ class GUI
   // clang-format on
 
 #ifdef __EMSCRIPTEN__
-  void open_file_dialog_async();  // Emscripten: hidden <input type="file">; no custom title (browser UI)
-  void import_file_dialog_async();                 // STEP / PLY import (routes to on_import_file)
+  void open_file_dialog_async();    // Emscripten: hidden <input type="file">; no custom title (browser UI)
+  void import_file_dialog_async();  // STEP / PLY import (routes to on_import_file)
   void save_file_dialog_async(const char* title, const std::string& default_file, const std::string& json_str);
   void download_blob_async(const std::string& default_filename, const std::string& data);
 #endif
@@ -163,7 +186,13 @@ class GUI
   void export_file_dialog_(Export_format fmt);
 
   void sketch_underlay_import_dialog_();
-  void sketch_underlay_panel_(const std::shared_ptr<Sketch>& sk);
+  void sketch_underlay_panel_settings_(const std::shared_ptr<Sketch>& sk);
+  void cancel_underlay_calib_();
+  bool try_underlay_calib_click_(const ScreenCoords& screen_coords);
+  void begin_underlay_calib_set_x_(const std::shared_ptr<Sketch>& sk);
+  void begin_underlay_calib_set_y_(const std::shared_ptr<Sketch>& sk);
+  void underlay_calib_prompt_x_distance_(const std::shared_ptr<Sketch>& sk);
+  void underlay_calib_prompt_y_distance_(const std::shared_ptr<Sketch>& sk);
 #if defined(__EMSCRIPTEN__)
   void sketch_underlay_file_dialog_async();
 #endif
@@ -192,12 +221,14 @@ class GUI
   // Sketch segment manual length input related
   std::function<void(float, bool)> m_dist_callback;
   ScreenCoords                     m_dist_edit_loc {glm::dvec2(0, 0)};
-  float                            m_dist_val;
+  float                            m_dist_val {};
+  bool                             m_dist_edit_focus_pending {false};
 
   // Sketch segment manual angle input related
   std::function<void(float, bool)> m_angle_callback;
   ScreenCoords                     m_angle_edit_loc {glm::dvec2(0, 0)};
-  float                            m_angle_val;
+  float                            m_angle_val {};
+  bool                             m_angle_edit_focus_pending {false};
 
   // Mode related
   Mode                        m_mode         = Mode::Normal;
@@ -222,69 +253,80 @@ class GUI
   Log_strm*       m_cout_log_buf      = nullptr;  // Custom stdout buffer
   Log_strm*       m_cerr_log_buf      = nullptr;  // Custom stderr buffer
 
-  std::string                                      m_last_saved_path;  // Session path for Ctrl+S / Save as
-  bool                                             m_load_last_opened_on_startup {false};
-  std::string                                      m_last_opened_project_path;  // Persisted in settings (native)
-  std::vector<std::pair<std::string, std::string>> m_example_files;    // (display_name, path) for Examples menu
-  bool                                             m_show_sketch_list {true};
-  bool                                             m_show_shape_list {true};
-  bool                                             m_show_options {true};
-  bool                                             m_show_settings_dialog {false};
-  bool                                             m_open_add_box_popup {false};
-  double                                           m_add_box_origin_x {0};
-  double                                           m_add_box_origin_y {0};
-  double                                           m_add_box_origin_z {0};
-  double                                           m_add_box_width {1};
-  double                                           m_add_box_length {1};
-  double                                           m_add_box_height {1};
-  bool                                             m_open_add_pyramid_popup {false};
-  double                                           m_add_pyramid_origin_x {0}, m_add_pyramid_origin_y {0}, m_add_pyramid_origin_z {0};
-  double                                           m_add_pyramid_side {1};
-  bool                                             m_open_add_sphere_popup {false};
-  double                                           m_add_sphere_origin_x {0}, m_add_sphere_origin_y {0}, m_add_sphere_origin_z {0};
-  double                                           m_add_sphere_radius {1};
-  bool                                             m_open_add_cylinder_popup {false};
-  double                                           m_add_cylinder_origin_x {0}, m_add_cylinder_origin_y {0}, m_add_cylinder_origin_z {0};
-  double                                           m_add_cylinder_radius {1}, m_add_cylinder_height {1};
-  bool                                             m_open_add_cone_popup {false};
-  double                                           m_add_cone_origin_x {0}, m_add_cone_origin_y {0}, m_add_cone_origin_z {0};
-  double                                           m_add_cone_R1 {1}, m_add_cone_R2 {0}, m_add_cone_height {1};
-  bool                                             m_open_add_torus_popup {false};
-  double                                           m_add_torus_origin_x {0}, m_add_torus_origin_y {0}, m_add_torus_origin_z {0};
-  double                                           m_add_torus_R1 {1}, m_add_torus_R2 {0.5};
-  bool                                             m_hide_all_shapes {false};
-  bool                                             m_show_tool_tips {true};
-  bool                                             m_dark_mode {false};
+  std::string m_last_saved_path;  // Session path for Ctrl+S / Save as
+  bool        m_load_last_opened_on_startup {false};
+  std::string m_last_opened_project_path;  // Persisted in settings (native)
+
+  using Example_file_list = std::vector<Example_file>;
+  Example_file_list m_example_files;
+
+  bool   m_show_sketch_list {true};
+  bool   m_show_shape_list {true};
+  bool   m_show_options {true};
+  bool   m_show_settings_dialog {false};
+  bool   m_open_add_box_popup {false};
+  double m_add_box_origin_x {0};
+  double m_add_box_origin_y {0};
+  double m_add_box_origin_z {0};
+  double m_add_box_width {1};
+  double m_add_box_length {1};
+  double m_add_box_height {1};
+  bool   m_open_add_pyramid_popup {false};
+  double m_add_pyramid_origin_x {0}, m_add_pyramid_origin_y {0}, m_add_pyramid_origin_z {0};
+  double m_add_pyramid_side {1};
+  bool   m_open_add_sphere_popup {false};
+  double m_add_sphere_origin_x {0}, m_add_sphere_origin_y {0}, m_add_sphere_origin_z {0};
+  double m_add_sphere_radius {1};
+  bool   m_open_add_cylinder_popup {false};
+  double m_add_cylinder_origin_x {0}, m_add_cylinder_origin_y {0}, m_add_cylinder_origin_z {0};
+  double m_add_cylinder_radius {1}, m_add_cylinder_height {1};
+  bool   m_open_add_cone_popup {false};
+  double m_add_cone_origin_x {0}, m_add_cone_origin_y {0}, m_add_cone_origin_z {0};
+  double m_add_cone_R1 {1}, m_add_cone_R2 {0}, m_add_cone_height {1};
+  bool   m_open_add_torus_popup {false};
+  double m_add_torus_origin_x {0}, m_add_torus_origin_y {0}, m_add_torus_origin_z {0};
+  double m_add_torus_R1 {1}, m_add_torus_R2 {0.5};
+  bool   m_hide_all_shapes {false};
+  bool   m_show_tool_tips {true};
+  bool   m_dark_mode {false};
 #ifndef NDEBUG
   bool m_show_dbg {false};
 #endif
-  bool                         m_show_lua_console {true};  // Lua Console pane; hidden if false in settings
+  bool                  m_show_lua_console {true};  // Lua Console pane; hidden if false in settings
   /// ImGui corner radii (applied after StyleColorsDark/Light each frame). Scroll value sets both scrollbar and grab rounding.
-  float                        m_imgui_rounding_general {0.f};
-  float                        m_imgui_rounding_scroll {0.f};
-  float                        m_imgui_rounding_tabs {0.f};
-  void*                        m_underlay_panel_sketch {nullptr};
-  bool                         m_sketch_properties_open {false};
-  std::weak_ptr<Sketch>        m_sketch_properties_sketch;
+  float                 m_imgui_rounding_general {0.f};
+  float                 m_imgui_rounding_scroll {0.f};
+  float                 m_imgui_rounding_tabs {0.f};
+  void*                 m_underlay_panel_sketch {nullptr};
+  Underlay_calib_phase  m_underlay_calib_phase {Underlay_calib_phase::None};
+  std::weak_ptr<Sketch> m_underlay_calib_sketch_wk {};
+  bool                  m_underlay_calib_have_x {false};
+  gp_Pnt2d              m_underlay_calib_x0 {};
+  gp_Pnt2d              m_underlay_calib_x1 {};
+  gp_Vec2d              m_underlay_calib_axis_u {};  // After X distance (model units)
+  gp_Pnt2d              m_underlay_calib_y0 {};
+  gp_Pnt2d              m_underlay_calib_y1 {};
+  bool                  m_sketch_properties_open {false};
+  std::weak_ptr<Sketch> m_sketch_properties_sketch;
   /// If set, next underlay import (menu or async) applies to this sketch; otherwise current sketch.
-  std::weak_ptr<Sketch>        m_underlay_import_sketch_target;
-  double                       m_ul_cx {};
-  double                       m_ul_cy {};
-  double                       m_ul_hw {};
-  double                       m_ul_hh {};
-  double                       m_ul_rot {};
-  float                        m_ul_opacity {0.88f};
-  bool                         m_ul_vis {true};
-  bool                         m_ul_key_white {true};
-  bool                         m_ul_line_tint {true};
-  float                        m_ul_tint_col[3] {1.f, 220.f / 255.f, 0.f};
+  std::weak_ptr<Sketch> m_underlay_import_sketch_target;
+  double                m_ul_cx {};
+  double                m_ul_cy {};
+  double                m_ul_hw {};
+  double                m_ul_hh {};
+  double                m_ul_rot {};
+  float                 m_ul_opacity {0.88f};
+  bool                  m_ul_vis {true};
+  bool                  m_ul_key_white {true};
+  bool                  m_ul_line_tint {true};
+  float                 m_ul_tint_col[3] {1.f, 220.f / 255.f, 0.f};
   /// Default underlay tint for new imports (0–1, persisted in ezycad_settings.json).
-  float                        m_underlay_highlight_color[3] {1.f, 220.f / 255.f, 0.f};
+  float                 m_underlay_highlight_color[3] {1.f, 220.f / 255.f, 0.f};
 
-  std::unique_ptr<Lua_console> m_lua_console;
-  bool                         m_show_python_console {false};
+  std::unique_ptr<Lua_console>    m_lua_console;
+  bool                            m_show_python_console {false};
   std::unique_ptr<Python_console> m_python_console;
-  ImFont*                      m_console_font {nullptr};  // Cousine monospace; set from main
+  ImFont*                         m_console_font {nullptr};  // Cousine monospace; set from main
 };
 
 /// OCCT standard material display names for ImGui combos (index matches \c Graphic3d_NameOfMaterial).

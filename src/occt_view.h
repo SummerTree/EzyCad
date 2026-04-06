@@ -74,6 +74,8 @@ class Occt_view : protected AIS_ViewController
   /// Saves current document (full JSON) and mode. A future delta-based approach would save memory
   /// (store only changes per step) and CPU (apply/invert deltas instead of full serialize/load).
   void   push_undo_snapshot();
+  /// Removes the last snapshot without restoring (e.g. aborted edit that did not change the document).
+  void   pop_undo_snapshot();
   bool   undo();
   bool   redo();
   bool   can_undo() const;
@@ -82,6 +84,8 @@ class Occt_view : protected AIS_ViewController
   size_t redo_stack_size() const;
 
   void do_frame();
+  /// Apply pending navigation (pan/zoom/rotate) to the camera before UI uses view projection (e.g. underlay slider bounds).
+  void flush_view_events();
 
   // Mode related.
   void on_mode();
@@ -159,6 +163,12 @@ class Occt_view : protected AIS_ViewController
   // Query related
   AIS_Shape_ptr           get_shape(const ScreenCoords& screen_coords);
   std::optional<gp_Pnt2d> pt_on_plane(const ScreenCoords& screen_coords, const gp_Pln& plane) const;
+
+  /// Axis-aligned bounds in sketch-plane 2D (gp_Pln UV) for the current view frustum intersecting \a pln.
+  /// Uses \a display_w / \a display_h in the same pixel space as ImGui / GLFW cursor (full window).
+  /// Returns false if the plane is not visible (e.g. headless or parallel view).
+  bool sketch_plane_view_aabb_2d(const gp_Pln& pln, double display_w, double display_h, double& out_min_u,
+                                 double& out_min_v, double& out_max_u, double& out_max_v) const;
 
   GUI&                    gui();
   AIS_InteractiveContext& ctx();
