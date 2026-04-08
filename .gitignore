@@ -1,5 +1,7 @@
 /build*
 /.vscode/settings.json
+# Legacy name; some toolchains write here. Primary vendored deps live in third_party/.
 /thirdParty
-/.cursor/rules/ezycad-style.md
 /.vs
+# Cursor IDE (local only). Shared assistant-oriented notes live in agents/.
+/.cursor/

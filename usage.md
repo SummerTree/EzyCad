@@ -26,7 +26,7 @@ EzyCad (Easy CAD) is a CAD application for hobbyist machinists to design and edi
 - OpenGL-compatible graphics card
 
 ### Installation
-1. Download the latest release for your operating system — see [README](README.md) for build instructions; automated builds and releases are not yet available (see [issue #45](https://github.com/trailcode/EzyCad/issues/45))
+1. Download the latest release for your operating system - see [README](README.md) for build instructions; automated builds and releases are not yet available (see [issue #45](https://github.com/trailcode/EzyCad/issues/45))
 2. Extract the archive to your preferred location
 3. Run the executable file
 
@@ -34,10 +34,10 @@ EzyCad (Easy CAD) is a CAD application for hobbyist machinists to design and edi
 
 ### Main Components
 1. **Menu Bar**
-   - **File** — [New](#new-project), [Open](#open-project), [Save](#save-project), Save as, [Import](#importing-3d-geometries), [Export](#exporting-3d-geometries), Examples, Exit
-   - **Edit** — [Undo](#edit-operations), [Redo](#edit-operations)
-   - **View** — [Settings, panes, Lua/Python consoles](#help-and-settings),
-   - **Help** — [About, Usage Guide](#help-and-settings)
+   - **File** - [New](#new-project), [Open](#open-project), [Save](#save-project), Save as, [Import](#importing-3d-geometries), [Export](#exporting-3d-geometries), Examples, Exit
+   - **Edit** - [Undo](#edit-operations), [Redo](#edit-operations)
+   - **View** - [Settings, panes, Lua/Python consoles](#help-and-settings),
+   - **Help** - [About, Usage Guide](#help-and-settings)
 
 2. **Toolbar**
    - Quick access to commonly used tools
@@ -66,38 +66,38 @@ EzyCad (Easy CAD) is a CAD application for hobbyist machinists to design and edi
 
 ### Help and Settings
 
-**View menu** — Toggle panes and open settings:
-- **Settings** — Opens the Settings dialog. Use it to adjust:
-  - **Dark mode** — Toggle dark theme.
-  - **3D view background** — Background gradient colors and blend direction.
-  - **3D view grid** — Grid colors.
-  - **Defaults** — Restore default settings.
-- **Options** — Show or hide the Options panel.
-- **Sketch List** — Show or hide the [Sketch List](#sketch-list) pane.
-- **Shape List** — Show or hide the Shape List pane.
-- **Log** — Show or hide the Log window.
-- **Lua Console** — Show or hide the interactive Lua prompt and `res/scripts/lua` editors. See [Scripting (Lua and Python)](#scripting-lua-and-python).
-- **Python Console** — Same for Python when the app is built with embedded Python (native only; not in the WebAssembly build).
-- **Debug** — Show or hide the debug pane (debug builds only).
+**View menu** - Toggle panes and open settings:
+- **Settings** - Opens the Settings dialog. Use it to adjust:
+  - **Dark mode** - Toggle dark theme.
+  - **3D view background** - Background gradient colors and blend direction.
+  - **3D view grid** - Grid colors.
+  - **Defaults** - Restore default settings.
+- **Options** - Show or hide the Options panel.
+- **Sketch List** - Show or hide the [Sketch List](#sketch-list) pane.
+- **Shape List** - Show or hide the Shape List pane.
+- **Log** - Show or hide the Log window.
+- **Lua Console** - Show or hide the interactive Lua prompt and `res/scripts/lua` editors. See [Scripting (Lua and Python)](#scripting-lua-and-python).
+- **Python Console** - Same for Python when the app is built with embedded Python (native only; not in the WebAssembly build).
+- **Debug** - Show or hide the debug pane (debug builds only).
 
 **Help menu**
-- **About** — Opens the [project README](README.md) in the browser.
-- **Usage Guide** — Opens [this usage guide](usage.md) in the browser.
+- **About** - Opens the [project README](README.md) in the browser.
+- **Usage Guide** - Opens [this usage guide](usage.md) in the browser.
 
-**Saving settings** — **File → Save settings** (Emscripten) or the application’s save-on-exit behavior saves current layout, view, and the above options so they persist next time you run EzyCad.
+**Saving settings** - **File -> Save settings** (Emscripten) or the application's save-on-exit behavior saves current layout, view, and the above options so they persist next time you run EzyCad.
 
 ### Sketch List
 
-The **Sketch List** pane lists all 2D sketches in the current document. Open it from **View → Sketch List**.
+The **Sketch List** pane lists all 2D sketches in the current document. Open it from **View -> Sketch List**.
 
 For each sketch you can:
 
-- **Set current** — Use the radio button (○) to make this sketch the current one. The current sketch is used for editing and for operations such as [extrude](#extrude-sketch-face-tool-e).
-- **Rename** — Click the name field and type to change the sketch’s name.
-- **Visibility** — Use the checkbox to show or hide the sketch in the 3D view.
-- **Delete** — Right‑click the sketch name and choose **Delete** to remove the sketch from the document.
+- **Set current** - Use the radio button (circle) to make this sketch the current one. The current sketch is used for editing and for operations such as [extrude](#extrude-sketch-face-tool-e).
+- **Rename** - Click the name field and type to change the sketch's name.
+- **Visibility** - Use the checkbox to show or hide the sketch in the 3D view.
+- **Delete** - Right-click the sketch name and choose **Delete** to remove the sketch from the document.
 
-The window can be closed with its close button; use **View → Sketch List** again to show it.
+The window can be closed with its close button; use **View -> Sketch List** again to show it.
 
 ## Scripting (Lua and Python)
 
@@ -129,12 +129,12 @@ For shortcuts, sample scripts, binding tables, and limitations, see the **[Scrip
 
 ### Startup project (defaults)
 
-Similar to Blender’s startup file: EzyCad can load a **default document** when it starts, including geometry, camera/view (stored in the `.ezy`), and **current tool mode**.
+Similar to Blender's startup file: EzyCad can load a **default document** when it starts, including geometry, camera/view (stored in the `.ezy`), and **current tool mode**.
 
-- **First launch / no custom startup** — The app loads the bundled template `res/default.ezy` from the install or build output.
-- **Save your own startup** — Set up the scene and mode the way you want, open **Settings** (menu bar), expand **Startup project**, and click **Save current as startup project**. On desktop, this writes `startup.ezy` under your user config folder (e.g. Windows: `%APPDATA%\EzyCad\`; Linux: `~/.config/EzyCad/`; macOS: `~/Library/Application Support/EzyCad/`). On the web build, it is stored in the browser (localStorage).
-- **Next runs** — If a saved startup exists, it is loaded instead of the bundled file. The session starts **untitled** (so **Save** does not overwrite your startup file until you pick a path).
-- **Clear saved startup** — In **Settings → Startup project**, click **Clear saved startup**; the next launch uses the bundled `res/default.ezy` again.
+- **First launch / no custom startup** - The app loads the bundled template `res/default.ezy` from the install or build output.
+- **Save your own startup** - Set up the scene and mode the way you want, open **Settings** (menu bar), expand **Startup project**, and click **Save current as startup project**. On desktop, this writes `startup.ezy` under your user config folder (e.g. Windows: `%APPDATA%\EzyCad\`; Linux: `~/.config/EzyCad/`; macOS: `~/Library/Application Support/EzyCad/`). On the web build, it is stored in the browser (localStorage).
+- **Next runs** - If a saved startup exists, it is loaded instead of the bundled file. The session starts **untitled** (so **Save** does not overwrite your startup file until you pick a path).
+- **Clear saved startup** - In **Settings -> Startup project**, click **Clear saved startup**; the next launch uses the bundled `res/default.ezy` again.
 
 ## Edit Operations
 
@@ -154,8 +154,8 @@ Edit operations change your model (sketches or 3D shapes) and can be navigated w
     - When you undo or redo a step, the application returns to the mode that was active for that operation (e.g., sketch inspection vs normal inspection).
 
   - **Shortcuts**
-    - <kbd>Ctrl</kbd>+<kbd>Z</kbd> — Undo last operation.
-    - <kbd>Ctrl</kbd>+<kbd>Y</kbd> or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> — Redo.
+    - <kbd>Ctrl</kbd>+<kbd>Z</kbd> - Undo last operation.
+    - <kbd>Ctrl</kbd>+<kbd>Y</kbd> or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> - Redo.
     - These shortcuts work even when focus is in a pane such as Sketch List, Options, or Log.
 
   - **Limits and notes**
@@ -167,8 +167,8 @@ Press <kbd>Esc</kbd> to cancel the current action or step back to a broader mode
 
 - **If something is in progress:** <kbd>Esc</kbd> cancels it and discards the change. Examples: cancel a line you are drawing, revert an unconfirmed [move](#shape-move-tool-g)/[rotate](#shape-rotate-tool-r)/[scale](#shape-scale-tool-s), cancel [extrude](#extrude-sketch-face-tool-e) preview, clear the distance or angle input dialog.
 - **If nothing is in progress:** <kbd>Esc</kbd> steps the application to the **parent mode** (one level up):
-  - From a **sketch tool** (e.g. Add line, Add circle, Operation axis) → **Sketch inspection mode**.
-  - From **Sketch inspection**, **Normal**, or any **shape tool** ([Move](#shape-move-tool-g), [Rotate](#shape-rotate-tool-r), [Scale](#shape-scale-tool-s), [Extrude](#extrude-sketch-face-tool-e), [Chamfer](#other-feature-operations), [Fillet](#other-feature-operations), [Polar duplicate](#shape-polar-duplicate-tool), [Create sketch from face](usage-sketch.md#create-sketch-from-planar-face-tool)) → **Normal** (inspection) mode.
+  - From a **sketch tool** (e.g. Add line, Add circle, Operation axis) -> **Sketch inspection mode**.
+  - From **Sketch inspection**, **Normal**, or any **shape tool** ([Move](#shape-move-tool-g), [Rotate](#shape-rotate-tool-r), [Scale](#shape-scale-tool-s), [Extrude](#extrude-sketch-face-tool-e), [Chamfer](#other-feature-operations), [Fillet](#other-feature-operations), [Polar duplicate](#shape-polar-duplicate-tool), [Create sketch from face](usage-sketch.md#create-sketch-from-planar-face-tool)) -> **Normal** (inspection) mode.
 
 So repeated <kbd>Esc</kbd> from a sketch drawing tool first cancels the current element, then returns to Sketch inspection, then to Normal.
 
@@ -215,7 +215,7 @@ In addition to creating 3D shapes from sketches, EzyCad supports importing exist
 | **PLY** (`.ply`) | Triangle mesh; fast to load compared to heavy STEP assemblies |
 
 **How to import:**
-1. Use **File → Import**
+1. Use **File -> Import**
 2. Pick a `.step`, `.stp`, or `.ply` file (the dialog lists these types)
 3. Geometry is added as 3D shape(s) in the document
 4. You can move, rotate, scale, and use imported bodies in [boolean operations](#other-feature-operations) like native solids where the geometry allows it
@@ -224,7 +224,7 @@ In addition to creating 3D shapes from sketches, EzyCad supports importing exist
 - Supported: **ASCII** PLY and **binary little-endian** PLY.
 - Not supported: **binary big-endian** PLY.
 - Meshes must use **triangular faces** (3 indices per face). Typical `vertex` properties **x**, **y**, **z** (and optional extra properties) are accepted; **face** elements must include a **list** property (e.g. `property list uchar int vertex_indices`) suitable for triangles.
-- Imported PLY data becomes a **mesh-style** solid (many triangular faces), not a parametric STEP solid—file size and display performance depend on triangle count.
+- Imported PLY data becomes a **mesh-style** solid (many triangular faces), not a parametric STEP solid - file size and display performance depend on triangle count.
 
 **STEP import notes:**
 - If the file cannot be read or contains no transferable geometry, a **message** explains the failure (invalid data, empty transfer, etc.).
@@ -233,7 +233,7 @@ In addition to creating 3D shapes from sketches, EzyCad supports importing exist
 
 ### Exporting 3D geometries
 
-Use **File → Export** to save the current model for other CAD tools, CAM, or 3D printing.
+Use **File -> Export** to save the current model for other CAD tools, CAM, or 3D printing.
 
 | | |
 | ---: | --- |
@@ -246,7 +246,7 @@ Use **File → Export** to save the current model for other CAD tools, CAM, or 3
 
 **Mesh exports (STL and PLY):** Surfaces are **tessellated** with a fixed linear deflection (same idea as typical STL export). Very complex B-rep models produce large mesh files.
 
-**How to export:** **File → Export →** choose STEP, IGES, STL (binary), or **PLY (binary)**, then pick a save location (desktop) or accept the browser download (WebAssembly).
+**How to export:** **File -> Export ->** choose STEP, IGES, STL (binary), or **PLY (binary)**, then pick a save location (desktop) or accept the browser download (WebAssembly).
 
 For detailed information on creating 2D geometry, see the [2D Sketching](usage-sketch.md) guide. For information on working with 3D shapes, see the [3D Modeling](#3d-modeling) section.
 
@@ -256,14 +256,14 @@ See the **[2D Sketching guide](usage-sketch.md)** for full documentation of sket
 
 ### 3D Modeling
 1. **Transform Operations**
-   - <img src="icons/Assembly_AxialMove.png" alt="Shape Move Tool" width="20" height="20"> [Move shapes (G)](#shape-move-tool-g)
-   - <img src="icons/Draft_Rotate.png" alt="Shape Rotate Tool" width="20" height="20"> [Rotate objects (R)](#shape-rotate-tool-r)
-   - <img src="icons/Part_Scale.png" alt="Shape Scale Tool" width="20" height="20"> [Scale elements (S)](#shape-scale-tool)
-   - <img src="icons/Draft_PolarArray.png" alt="Polar Duplicate Tool" width="20" height="20"> [Polar duplicate](#shape-polar-duplicate-tool)
+   - <img src="res/icons/Assembly_AxialMove.png" alt="Shape Move Tool" width="20" height="20"> [Move shapes (G)](#shape-move-tool-g)
+   - <img src="res/icons/Draft_Rotate.png" alt="Shape Rotate Tool" width="20" height="20"> [Rotate objects (R)](#shape-rotate-tool-r)
+   - <img src="res/icons/Part_Scale.png" alt="Shape Scale Tool" width="20" height="20"> [Scale elements (S)](#shape-scale-tool)
+   - <img src="res/icons/Draft_PolarArray.png" alt="Polar Duplicate Tool" width="20" height="20"> [Polar duplicate](#shape-polar-duplicate-tool)
 
 #### Shape Move Tool (G)
 
-![Shape Move Tool](icons/Assembly_AxialMove.png)
+![Shape Move Tool](res/icons/Assembly_AxialMove.png)
 
 The shape move tool allows you to reposition selected shapes in the 3D viewer with precision and flexibility.
 
@@ -278,7 +278,7 @@ The shape move tool allows you to reposition selected shapes in the 3D viewer wi
 | **Reset and Cancel** | Press <kbd>Esc</kbd> to cancel and revert to the original position at any time during the move operation. |
 
 **How to Use:**
-1. <img src="icons/Assembly_AxialMove.png" alt="Assembly_AxialMove" width="20" height="20"> **Activate Move Tool:** Select one or more shapes and press <kbd>G</kbd> or click the icon.
+1. <img src="res/icons/Assembly_AxialMove.png" alt="Assembly_AxialMove" width="20" height="20"> **Activate Move Tool:** Select one or more shapes and press <kbd>G</kbd> or click the icon.
 2. **Constrain Movement (Optional):** Use the options panel to lock movement to a specific axis, or use keyboard shortcuts (e.g., <kbd>X</kbd>, <kbd>Y</kbd>, <kbd>Z</kbd>).
 
    ![Move constrain axis example](doc/gen/move_constrain_axis.png)
@@ -296,7 +296,7 @@ While moving a shape, you can press <kbd>Tab</kbd> to activate a floating distan
 
 #### Shape Rotate Tool (R)
 
-![Shape Rotate Tool](icons/Draft_Rotate.png)
+![Shape Rotate Tool](res/icons/Draft_Rotate.png)
 
 The shape rotate tool enables precise rotation of selected shapes around a specified axis in the 3D viewer.
 
@@ -309,7 +309,7 @@ The shape rotate tool enables precise rotation of selected shapes around a speci
 | **Visual Feedback** | The rotation axis is displayed with color-coded indicators (Red for X, Green for Y, Blue for Z). |
 
 **How to Use:**
-1. **Activate Rotate Tool:** <img src="icons/Draft_Rotate.png" alt="Draft_Rotate" width="20" height="20"> Select one or more shapes and press <kbd>R</kbd> or click the icon. You can also activate the tool and select the shape(s) to rotate afterwards.
+1. **Activate Rotate Tool:** <img src="res/icons/Draft_Rotate.png" alt="Draft_Rotate" width="20" height="20"> Select one or more shapes and press <kbd>R</kbd> or click the icon. You can also activate the tool and select the shape(s) to rotate afterwards.
 2. **Select Rotation Axis: (Optional)**
    
    ![Rotate constrain axis example](doc/gen/rotate_constrain_axis.png)
@@ -339,7 +339,7 @@ The shape rotate tool enables precise rotation of selected shapes around a speci
 
 #### Shape Scale Tool (S)
 
-![Shape Scale Tool](icons/Part_Scale.png)
+![Shape Scale Tool](res/icons/Part_Scale.png)
 
 The shape scale tool allows you to uniformly scale selected shapes around a computed center point.
 
@@ -355,7 +355,7 @@ The shape scale tool allows you to uniformly scale selected shapes around a comp
 **How to Use:**
 
 1. **Select shapes:** Select one or more shapes in the 3D view or Shape List.
-2. <img src="icons/Part_Scale.png" alt="Shape Scale Tool" width="20" height="20"> **Activate Scale Tool:** Click the *Shape scale* icon in the toolbar (or choose Scale from the Edit/Transform area if present).  
+2. <img src="res/icons/Part_Scale.png" alt="Shape Scale Tool" width="20" height="20"> **Activate Scale Tool:** Click the *Shape scale* icon in the toolbar (or choose Scale from the Edit/Transform area if present).  
 3. **Move the mouse:**  
    - The tool computes a scale center and a view-aligned plane.  
    - Moving the mouse away from or toward the center changes the scale factor and previews the scaled result.
@@ -373,7 +373,7 @@ The shape scale tool allows you to uniformly scale selected shapes around a comp
 
 The extrude tool allows you to create 3D solid shapes by extruding 2D sketch faces along a direction perpendicular to the sketch plane.
 
-![Extrude Tool](icons/Design456_Extrude.png)
+![Extrude Tool](res/icons/Design456_Extrude.png)
 
 **Features:**
 
@@ -387,7 +387,7 @@ The extrude tool allows you to create 3D solid shapes by extruding 2D sketch fac
 | **Bidirectional extrusion** | The extrusion direction is determined by which side of the face plane you move the mouse to |
 
 **How to Use:**
-1. <img src="icons/Design456_Extrude.png" alt="Design456_Extrude" width="20" height="20"> **Activate Extrude Tool**: Press <kbd>E</kbd> or click the icon to enter extrude mode
+1. <img src="res/icons/Design456_Extrude.png" alt="Design456_Extrude" width="20" height="20"> **Activate Extrude Tool**: Press <kbd>E</kbd> or click the icon to enter extrude mode
 2. **Select Face**: Click on a sketch face that you want to extrude
    - The face must be part of a closed sketch (forming a valid face)
    - The system will automatically select the face closest to the camera if multiple faces overlap
@@ -425,7 +425,7 @@ The extrude tool allows you to create 3D solid shapes by extruding 2D sketch fac
 
 #### Shape Polar Duplicate Tool
 
-![Polar Duplicate Tool](icons/Draft_PolarArray.png)
+![Polar Duplicate Tool](res/icons/Draft_PolarArray.png)
 
 The polar duplicate tool allows you to create multiple copies of selected shapes arranged in a circular pattern around a rotation center point.
 
@@ -441,11 +441,11 @@ The polar duplicate tool allows you to create multiple copies of selected shapes
 | **Polar arm definition** | Define the rotation center and direction by clicking a point |
 
 **How to use:**
-1. <img src="icons/Draft_PolarArray.png" alt="Draft_PolarArray" width="20" height="20"> **Activate Polar Duplicate Tool**: Click the icon to enter polar duplicate mode
+1. <img src="res/icons/Draft_PolarArray.png" alt="Draft_PolarArray" width="20" height="20"> **Activate Polar Duplicate Tool**: Click the icon to enter polar duplicate mode
 2. **Select shape**: Select the shape that you want to duplicate
 3. **Define polar arm**: Move the mouse to see a preview line (polar arm) from the shape center to the mouse cursor. Move to the origin of the operation
 4. **Configure options** in the options panel:
-   - **Polar angle**: Set the total angle for the pattern (e.g., 360° for full circle, 180° for half circle)
+   - **Polar angle**: Set the total angle for the pattern (e.g., 360 deg for full circle, 180 deg for half circle)
    - **Num Elms**: Set the number of duplicate elements to create
    - **Rotate dups**: Checkbox to rotate each duplicate as it's copied (default: enabled)
    - **Combine dups**: Checkbox to combine all duplicates into a single shape (default: enabled)
@@ -455,7 +455,7 @@ The polar duplicate tool allows you to create multiple copies of selected shapes
 
 | | |
 | ---: | --- |
-| **Polar angle** | The total angular span of the pattern. 360° creates a full circle, 180° creates a half circle, etc. |
+| **Polar angle** | The total angular span of the pattern. 360 deg creates a full circle, 180 deg creates a half circle, etc. |
 | **Num Elms** | The number of duplicate elements to create. The original shape is not counted, so 5 elements means 5 copies plus the original. |
 | **Rotate dups** | When enabled, each duplicate is rotated around its own center as it's positioned. When disabled, duplicates maintain their original orientation. |
 | **Combine dups** | When enabled, all duplicates are fused together into a single shape. When disabled, each duplicate remains a separate shape. |
@@ -518,7 +518,7 @@ The polar duplicate tool allows you to create multiple copies of selected shapes
 
 ### Shape selection filter (Normal mode only)
 
-In **Normal** mode, number keys set the **Selection Mode** filter for picking 3D shapes (same control as **Options → Selection Mode**). Main keyboard **<kbd>1</kbd>–<kbd>9</kbd>** and keypad **<kbd>1</kbd>–<kbd>9</kbd>** are supported. Order matches Open CASCADE `TopAbs_ShapeEnum` (see `utl_occt.h` / combo labels):
+In **Normal** mode, number keys set the **Selection Mode** filter for picking 3D shapes (same control as **Options -> Selection Mode**). Main keyboard **<kbd>1</kbd>-<kbd>9</kbd>** and keypad **<kbd>1</kbd>-<kbd>9</kbd>** are supported. Order matches Open CASCADE `TopAbs_ShapeEnum` (see `utl_occt.h` / combo labels):
 
 | Key | Filter |
 | ---: | --- |
@@ -532,11 +532,11 @@ In **Normal** mode, number keys set the **Selection Mode** filter for picking 3D
 | <kbd>8</kbd> | Vertex |
 | <kbd>9</kbd> | Shape |
 
-While focus is in a text field (dimension input, script console, etc.), **<kbd>1</kbd>–<kbd>9</kbd>** are left to the UI: `main.cpp` does not call the global key handler when ImGui reports `WantTextInput`. Chamfer, fillet, and sketch modes may change the filter automatically when you enter them.
+While focus is in a text field (dimension input, script console, etc.), **<kbd>1</kbd>-<kbd>9</kbd>** are left to the UI: `main.cpp` does not call the global key handler when ImGui reports `WantTextInput`. Chamfer, fillet, and sketch modes may change the filter automatically when you enter them.
 
 ### Lua and Python consoles
 
-Open or close the **Lua** or **Python** consoles from **View → Lua Console** or **View → Python Console** (no default keyboard shortcuts).
+Open or close the **Lua** or **Python** consoles from **View -> Lua Console** or **View -> Python Console** (no default keyboard shortcuts).
 
 ## View Controls
 
@@ -602,37 +602,37 @@ Open or close the **Lua** or **Python** consoles from **View → Lua Console** o
 ## Tool Icons
 
 ### Basic Operations
-- <img src="icons/User.png" alt="User" width="20" height="20"> - Inspection mode
-- <img src="icons/Assembly_AxialMove.png" alt="Assembly_AxialMove" width="20" height="20"> - Shape move (<kbd>G</kbd>)
-- <img src="icons/Draft_Rotate.png" alt="Draft_Rotate" width="20" height="20"> - Shape rotate (<kbd>R</kbd>)
-- <img src="icons/Part_Scale.png" alt="Part_Scale" width="20" height="20"> - Shape scale (<kbd>S</kbd>)
+- <img src="res/icons/User.png" alt="User" width="20" height="20"> - Inspection mode
+- <img src="res/icons/Assembly_AxialMove.png" alt="Assembly_AxialMove" width="20" height="20"> - Shape move (<kbd>G</kbd>)
+- <img src="res/icons/Draft_Rotate.png" alt="Draft_Rotate" width="20" height="20"> - Shape rotate (<kbd>R</kbd>)
+- <img src="res/icons/Part_Scale.png" alt="Part_Scale" width="20" height="20"> - Shape scale (<kbd>S</kbd>)
 
 ### Sketch Tools
-- <img src="icons/Workbench_Sketcher_none.png" alt="Workbench_Sketcher_none" width="20" height="20"> - Sketch inspection mode
-- <img src="icons/Macro_FaceToSketch_48.png" alt="Macro_FaceToSketch_48" width="20" height="20"> - Create sketch from planar face
-- <img src="icons/Sketcher_MirrorSketch.png" alt="Sketcher_MirrorSketch" width="20" height="20"> - Define operation axis
-- <img src="icons/Sketcher_CreatePoint.png" alt="Sketcher_CreatePoint" width="20" height="20"> - Add node
-- <img src="icons/Sketcher_Element_Line_Edge.png" alt="Sketcher_Element_Line_Edge" width="20" height="20"> - Add line edge
-- <img src="icons/ls.png" alt="ls" width="20" height="20"> - Add multi-line edge
-- <img src="icons/Sketcher_Element_Arc_Edge.png" alt="Sketcher_Element_Arc_Edge" width="20" height="20"> - Add arc circle
-- <img src="icons/Sketcher_CreateSquare.png" alt="Sketcher_CreateSquare" width="20" height="20"> - Add square
-- <img src="icons/Sketcher_CreateRectangle.png" alt="Sketcher_CreateRectangle" width="20" height="20"> - Add rectangle from two points
-- <img src="icons/Sketcher_CreateRectangle_Center.png" alt="Sketcher_CreateRectangle_Center" width="20" height="20"> - Add rectangle with center point
-- <img src="icons/Sketcher_CreateCircle.png" alt="Sketcher_CreateCircle" width="20" height="20"> - Add circle (center and radius)
-- <img src="icons/Sketcher_Create3PointCircle.png" alt="Sketcher_Create3PointCircle" width="20" height="20"> - Add circle from three points *(planned feature)*
-- <img src="icons/Sketcher_CreateSlot.png" alt="Sketcher_CreateSlot" width="20" height="20"> - Add slot
-- <img src="icons/TechDraw_LengthDimension.png" alt="TechDraw_LengthDimension" width="20" height="20"> - Toggle edge dimension annotation
+- <img src="res/icons/Workbench_Sketcher_none.png" alt="Workbench_Sketcher_none" width="20" height="20"> - Sketch inspection mode
+- <img src="res/icons/Macro_FaceToSketch_48.png" alt="Macro_FaceToSketch_48" width="20" height="20"> - Create sketch from planar face
+- <img src="res/icons/Sketcher_MirrorSketch.png" alt="Sketcher_MirrorSketch" width="20" height="20"> - Define operation axis
+- <img src="res/icons/Sketcher_CreatePoint.png" alt="Sketcher_CreatePoint" width="20" height="20"> - Add node
+- <img src="res/icons/Sketcher_Element_Line_Edge.png" alt="Sketcher_Element_Line_Edge" width="20" height="20"> - Add line edge
+- <img src="res/icons/ls.png" alt="ls" width="20" height="20"> - Add multi-line edge
+- <img src="res/icons/Sketcher_Element_Arc_Edge.png" alt="Sketcher_Element_Arc_Edge" width="20" height="20"> - Add arc circle
+- <img src="res/icons/Sketcher_CreateSquare.png" alt="Sketcher_CreateSquare" width="20" height="20"> - Add square
+- <img src="res/icons/Sketcher_CreateRectangle.png" alt="Sketcher_CreateRectangle" width="20" height="20"> - Add rectangle from two points
+- <img src="res/icons/Sketcher_CreateRectangle_Center.png" alt="Sketcher_CreateRectangle_Center" width="20" height="20"> - Add rectangle with center point
+- <img src="res/icons/Sketcher_CreateCircle.png" alt="Sketcher_CreateCircle" width="20" height="20"> - Add circle (center and radius)
+- <img src="res/icons/Sketcher_Create3PointCircle.png" alt="Sketcher_Create3PointCircle" width="20" height="20"> - Add circle from three points *(planned feature)*
+- <img src="res/icons/Sketcher_CreateSlot.png" alt="Sketcher_CreateSlot" width="20" height="20"> - Add slot
+- <img src="res/icons/TechDraw_LengthDimension.png" alt="TechDraw_LengthDimension" width="20" height="20"> - Toggle edge dimension annotation
 
 ### 3D Operations
-- <img src="icons/Design456_Extrude.png" alt="Design456_Extrude" width="20" height="20"> - Extrude sketch face (<kbd>E</kbd>)
-- <img src="icons/PartDesign_Chamfer.png" alt="PartDesign_Chamfer" width="20" height="20"> - Chamfer
-- <img src="icons/PartDesign_Fillet.png" alt="PartDesign_Fillet" width="20" height="20"> - Fillet
-- <img src="icons/Draft_PolarArray.png" alt="Draft_PolarArray" width="20" height="20"> - Shape polar duplicate
+- <img src="res/icons/Design456_Extrude.png" alt="Design456_Extrude" width="20" height="20"> - Extrude sketch face (<kbd>E</kbd>)
+- <img src="res/icons/PartDesign_Chamfer.png" alt="PartDesign_Chamfer" width="20" height="20"> - Chamfer
+- <img src="res/icons/PartDesign_Fillet.png" alt="PartDesign_Fillet" width="20" height="20"> - Fillet
+- <img src="res/icons/Draft_PolarArray.png" alt="Draft_PolarArray" width="20" height="20"> - Shape polar duplicate
 
 ### Boolean Operations
-- <img src="icons/Part_Cut.png" alt="Part_Cut" width="20" height="20"> - Shape cut
-- <img src="icons/Part_Fuse.png" alt="Part_Fuse" width="20" height="20"> - Shape fuse
-- <img src="icons/Part_Common.png" alt="Part_Common" width="20" height="20"> - Shape common
+- <img src="res/icons/Part_Cut.png" alt="Part_Cut" width="20" height="20"> - Shape cut
+- <img src="res/icons/Part_Fuse.png" alt="Part_Fuse" width="20" height="20"> - Shape fuse
+- <img src="res/icons/Part_Common.png" alt="Part_Common" width="20" height="20"> - Shape common
 
 ---
 

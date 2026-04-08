@@ -106,9 +106,10 @@ if(MSVC_VERSION)
   if(NOT NUGET)
     message(FATAL_ERROR "Cannot find nuget command line tool.\nInstall it with e.g. choco install nuget.commandline")
   endif()
-  execute_process(COMMAND ${NUGET} install glfw                     -Version ${GLFW_VERSION}    -o thirdParty)
-  execute_process(COMMAND ${NUGET} install unofficial-flayan-glew   -Version ${GLEW_VERSION}    -o thirdParty)
-  execute_process(COMMAND ${NUGET} install boost                    -Version ${BOOST_VERSION}   -o thirdParty)
+  # Output must be under the build tree (CMAKE_BINARY_DIR), not the shell CWD, or clean out-of-source configures fail.
+  execute_process(COMMAND ${NUGET} install glfw                     -Version ${GLFW_VERSION}    -OutputDirectory "${CMAKE_BINARY_DIR}/thirdParty")
+  execute_process(COMMAND ${NUGET} install unofficial-flayan-glew   -Version ${GLEW_VERSION}    -OutputDirectory "${CMAKE_BINARY_DIR}/thirdParty")
+  execute_process(COMMAND ${NUGET} install boost                    -Version ${BOOST_VERSION}   -OutputDirectory "${CMAKE_BINARY_DIR}/thirdParty")
   # Include Boost from NuGet installation on Windows
   INCLUDE_DIRECTORIES(${PROJECT_NAME} ${BINARY_DIR}/thirdParty/boost.${BOOST_VERSION}/lib/native/include)
 else()
@@ -129,7 +130,7 @@ file(GLOB imguiSrc
   "third_party/imgui/imgui_tables.cpp"
   "third_party/imgui/emscripten/emscripten_mainloop_stub.h")
 
-file(GLOB srcs "src/*.cpp" "src/*.h" "src/*.inl")
+file(GLOB srcs CONFIGURE_DEPENDS "src/*.cpp" "src/*.h" "src/*.inl")
 #list(FILTER srcs EXCLUDE REGEX ".*main\\.cpp$")
 get_filename_component(full_path_main_cpp ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp ABSOLUTE)
 list(REMOVE_ITEM srcs ${full_path_main_cpp})
@@ -150,7 +151,26 @@ list(APPEND srcs ${gui_mode_cpp})
 # Define source files for the application
 # Including ImGui sources and main application file
 set(App_SRCS ${imguiSrc} ${srcs})
-list(APPEND App_SRCS "${CMAKE_SOURCE_DIR}/third_party/ImGuiColorTextEdit/TextEditor.cpp")
+set(EZYCAD_IMGUI_TEXT_EDITOR_CPP "${CMAKE_SOURCE_DIR}/third_party/ImGuiColorTextEdit/TextEditor.cpp")
+if(NOT EXISTS "${EZYCAD_IMGUI_TEXT_EDITOR_CPP}")
+  # Pinned commit (upstream has no release tags); bump when intentionally upgrading the editor.
+  FetchContent_Declare(
+    ImGuiColorTextEdit
+    GIT_REPOSITORY https://github.com/BalazsJako/ImGuiColorTextEdit.git
+    GIT_TAG        ca2f9f1462e3b60e56351bc466acda448c5ea50d
+    GIT_SHALLOW    TRUE)
+  FetchContent_MakeAvailable(ImGuiColorTextEdit)
+  set(_ige_fetch "${imguicolortextedit_SOURCE_DIR}")
+  set(_ige_stage "${CMAKE_BINARY_DIR}/ImGuiColorTextEdit_fetch/ImGuiColorTextEdit")
+  file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/ImGuiColorTextEdit_fetch")
+  file(COPY "${_ige_fetch}/" DESTINATION "${_ige_stage}")
+  set(EZYCAD_IMGUI_TEXT_EDITOR_CPP "${_ige_stage}/TextEditor.cpp")
+  include_directories("${CMAKE_BINARY_DIR}/ImGuiColorTextEdit_fetch")
+  if(NOT EXISTS "${EZYCAD_IMGUI_TEXT_EDITOR_CPP}")
+    message(FATAL_ERROR "ImGuiColorTextEdit fetch did not provide TextEditor.cpp (see third_party/README.md).")
+  endif()
+endif()
+list(APPEND App_SRCS "${EZYCAD_IMGUI_TEXT_EDITOR_CPP}")
 
 # Configure platform-specific GUI settings
 # WIN32 for Windows GUI application
@@ -198,8 +218,13 @@ if(DEFINED OCCT_3RD_PARTY_DIR)
   set(OCCT_3RD_PARTY_DIR "${OCCT_3RD_PARTY_DIR}" CACHE PATH "OCCT 3rd-party DLL root (freetype, ffmpeg, …)" FORCE)
 endif()
 
-file(GLOB ICON_ASSETS "${CMAKE_SOURCE_DIR}/icons/*.png")
-file(GLOB WEB_FILES "${CMAKE_SOURCE_DIR}/web/EzyCad.html")
+file(GLOB ICON_ASSETS CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/res/icons/*.png")
+file(GLOB WEB_FILES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/web/*.html")
+set(WEB_FILES_REL)
+foreach(f ${WEB_FILES})
+  file(RELATIVE_PATH f_rel "${CMAKE_SOURCE_DIR}" "${f}")
+  list(APPEND WEB_FILES_REL "${f_rel}")
+endforeach()
 
 set(OpenCASCADE_LIBS
     TKFillet
@@ -307,7 +332,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Emscripten")
     foreach(icon_file ${ICON_ASSETS})
         get_filename_component(icon_filename ${icon_file} NAME)
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} \
-            --preload-file ${icon_file}@/${icon_filename}")
+            --preload-file ${icon_file}@/res/icons/${icon_filename}")
     endforeach()
 
     list(APPEND OpenCASCADE_LIBS TKOpenGles)
@@ -361,19 +386,6 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Emscripten")
         lua
         ${OpenCASCADE_LIBS})
 
-    target_sources(${PROJECT_NAME} PRIVATE ${WEB_FILES})
-
-    # Add web/EzyCad.html to a "web" filter in the IDE
-    file(GLOB WEB_FILES "${CMAKE_SOURCE_DIR}/web/EzyCad.html")
-    set(WEB_FILES_REL)
-    foreach(f ${WEB_FILES})
-        file(RELATIVE_PATH f_rel "${CMAKE_SOURCE_DIR}" "${f}")
-        list(APPEND WEB_FILES_REL "${f_rel}")
-    endforeach()
-    source_group("web" FILES ${WEB_FILES_REL})
-
-    # Add to target sources (so it appears in the IDE)
-    target_sources(${PROJECT_NAME} PRIVATE ${WEB_FILES_REL})
 else()
 
     list(APPEND OpenCASCADE_LIBS TKOpenGl)
@@ -401,6 +413,13 @@ else()
             $<TARGET_FILE_DIR:${PROJECT_NAME}>/res/default.ezy
         COMMENT "Copying res/ezycad_settings.json and res/default.ezy for native"
     )
+    add_custom_command(
+        TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${PROJECT_NAME}>/res/icons
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/res/icons
+            $<TARGET_FILE_DIR:${PROJECT_NAME}>/res/icons
+        COMMENT "Copying res/icons for native")
     file(GLOB RES_EXAMPLE_FILES "${CMAKE_SOURCE_DIR}/res/examples/*.ezy")
     if(RES_EXAMPLE_FILES)
       add_custom_command(
@@ -510,15 +529,14 @@ else()
       set(CONFIG_ASSETS ${CMAKE_SOURCE_DIR}/imgui.ini)
 
       # Copy DLLs and assets to Release configurations
-      foreach(file ${DLLS_RELEASE} ${DLLS_COMMON} ${FONT_ASSETS} ${ICON_ASSETS} ${CONFIG_ASSETS})
+      foreach(file ${DLLS_RELEASE} ${DLLS_COMMON} ${FONT_ASSETS} ${CONFIG_ASSETS})
         file(COPY "${file}" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/Release")
         file(COPY "${file}" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/RelWithDebInfo")
         file(COPY "${file}" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/MinSizeRel")
       endforeach(file)
-      
 
       # Copy DLLs and assets to Debug configuration
-      foreach(file ${DLLS_DEBUG} ${DLLS_COMMON} ${FONT_ASSETS} ${ICON_ASSETS} ${CONFIG_ASSETS})
+      foreach(file ${DLLS_DEBUG} ${DLLS_COMMON} ${FONT_ASSETS} ${CONFIG_ASSETS})
           file(COPY "${file}" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/Debug")
       endforeach(file)
 
@@ -551,7 +569,7 @@ target_link_libraries(${PROJECT_NAME} ${OPENGL_LIBRARIES} ${OPENGL_gl_LIBRARY})
 
 source_group("imgui" FILES ${imguiSrc})
 source_group("src" FILES ${srcs})
-source_group("web" FILES ${WEB_FILES})
+source_group("web" FILES ${WEB_FILES_REL})
 
 
 # Add README to VS solution
@@ -587,7 +605,7 @@ if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Emscripten")
     enable_testing()
     
     # Create a test executable
-    file(GLOB TEST_SRCS "tests/*.cpp" "tests/*.h")
+    file(GLOB TEST_SRCS CONFIGURE_DEPENDS "tests/*.cpp" "tests/*.h")
     add_executable(${PROJECT_NAME}_tests ${TEST_SRCS})
     
     # Add src directory to include paths for tests
@@ -611,15 +629,10 @@ if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Emscripten")
     gtest_discover_tests(${PROJECT_NAME}_tests)
 endif()
 
-# After add_executable(${PROJECT_NAME} ...)
-file(GLOB WEB_FILES "${CMAKE_SOURCE_DIR}/web/EzyCad.html")
-set(WEB_FILES_REL)
-foreach(f ${WEB_FILES})
-    file(RELATIVE_PATH f_rel "${CMAKE_SOURCE_DIR}" "${f}")
-    list(APPEND WEB_FILES_REL "${f_rel}")
-endforeach()
-source_group("web" FILES ${WEB_FILES_REL})
-target_sources(${PROJECT_NAME} PRIVATE ${WEB_FILES_REL})
+# web/*.html listed in IDE (single target_sources; Emscripten + native)
+if(WEB_FILES_REL)
+  target_sources(${PROJECT_NAME} PRIVATE ${WEB_FILES_REL})
+endif()
 
 # Runtime assets: show res/ in the IDE (matches POST_BUILD copy to output dir)
 file(GLOB_RECURSE RES_FILES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/res/*")
