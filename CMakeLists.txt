@@ -24,6 +24,11 @@ if(CMAKE_CXX_COMPILER MATCHES "em\\+\\+")
   set(EMSCRIPTEN_BUILD TRUE)
 endif()
 
+# Detect iOS
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  set(IOS_BUILD TRUE)
+endif()
+
 # Python (optional embedded console) — native only.
 set(EZYCAD_HAVE_PYTHON FALSE)
 set(EZYCAD_PYTHON_LINK_MODE "")
@@ -121,7 +126,6 @@ else()
 endif()
 
 file(GLOB imguiSrc
-  "third_party/imgui/imgui_impl_glfw.cpp"
   "third_party/imgui/imgui_impl_opengl3.cpp"
   "third_party/imgui/imgui.cpp"
   "third_party/imgui/imgui_demo.cpp"
@@ -129,6 +133,10 @@ file(GLOB imguiSrc
   "third_party/imgui/imgui_widgets.cpp"
   "third_party/imgui/imgui_tables.cpp"
   "third_party/imgui/emscripten/emscripten_mainloop_stub.h")
+
+if(NOT IOS_BUILD)
+  list(APPEND imguiSrc "third_party/imgui/imgui_impl_glfw.cpp")
+endif()
 
 file(GLOB srcs CONFIGURE_DEPENDS "src/*.cpp" "src/*.h" "src/*.inl")
 #list(FILTER srcs EXCLUDE REGEX ".*main\\.cpp$")
@@ -386,6 +394,65 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Emscripten")
         lua
         ${OpenCASCADE_LIBS})
 
+elseif(IOS_BUILD)
+    # iOS-specific configuration
+    message(STATUS "Configuring iOS build")
+
+    # Set iOS-specific compiler flags
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} \
+        -fexceptions \
+        -fobjc-arc \
+        -ObjC++ \
+        -fPIC")
+
+    # OpenGL ES
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DGL_SILENCE_DEPRECATION")
+    add_definitions(-DIMGUI_IMPL_OPENGL_ES2)
+
+    # Find OpenGL ES
+    find_library(OPENGL_ES3_LIBRARY OpenGLES)
+    find_library(UIKIT_LIBRARY UIKit)
+    find_library(GLKIT_LIBRARY GLKit)
+    find_library(QUARTZCORE_LIBRARY QuartzCore)
+    find_library(FOUNDATION_LIBRARY Foundation)
+
+    # Link OpenGL ES and iOS frameworks
+    list(APPEND OpenCASCADE_LIBS TKOpenGLes)
+
+    # iOS source files (use GLKit instead of GLFW)
+    set(IOS_SRCS
+        "src/ios_main_loop.mm"
+        "src/ios_window.mm")
+
+    add_executable(${PROJECT_NAME}
+        ${IOS_SRCS}
+        ${App_SRCS}
+        third_party/tinyfiledialogs/tinyfiledialogs.c)
+
+    # Copy resources for iOS bundle
+    add_custom_command(
+        TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${PROJECT_NAME}>/res
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_SOURCE_DIR}/res/ezycad_settings.json
+            $<TARGET_FILE_DIR:${PROJECT_NAME}>/res/ezycad_settings.json
+        COMMENT "Copying res/ezycad_settings.json for iOS"
+    )
+
+    # Link libraries for iOS
+    target_link_libraries(${PROJECT_NAME}
+        lua
+        ${OpenCASCADE_LIBS}
+        "-framework OpenGLES"
+        ${UIKIT_LIBRARY}
+        ${GLKIT_LIBRARY}
+        ${QUARTZCORE_LIBRARY}
+        ${FOUNDATION_LIBRARY}
+        "-lz")
+
+    # Disable Python for iOS (not supported)
+    message(STATUS "Python console: disabled (iOS build)")
+
 else()
 
     list(APPEND OpenCASCADE_LIBS TKOpenGl)
@@ -552,6 +619,10 @@ if(APPLE)
     # MacOS-specific linking for OpenGL and system frameworks
     SET(CMAKE_CXX_LINK_FLAGS "-framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo")
 endif(APPLE)
+if(IOS_BUILD)
+    # iOS-specific settings
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -ObjC")
+endif(IOS_BUILD)
 
 
 # Add include directories for all third-party dependencies
@@ -588,8 +659,8 @@ if(MSVC)
 endif()
 
 
-# Add Google Test only for non-Emscripten builds
-if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Emscripten")
+# Add Google Test only for non-Emscripten and non-iOS builds
+if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Emscripten" AND NOT IOS_BUILD)
     # Download and configure Google Test
     include(FetchContent)
     FetchContent_Declare(
